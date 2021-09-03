@@ -38,7 +38,7 @@ class Handler(SocketServer.BaseRequestHandler):
 
         RowDescription (B)
 
-            Byte1('T')
+            Byte1('T') (MSG_ID)
             Identifies the message as a row description.
 
             Int32 (Length)
@@ -100,29 +100,76 @@ class Handler(SocketServer.BaseRequestHandler):
 
         return rVal
 
-    def DataRow_Section_Serialize(self) :
+    def utility_int_to_text(val) :
+        """! Translate a string to an ordinal string, little endian
+        @param val integer to translate
+
+        @return list of ordinals ascii value, representing the input val
         """
-        Serialize a data row section.
+        rVal = ''
+        while val != 0 :
+            digit = val % 10
+            val = val / 10
+            char_digit = struct.pack("!c",  str(digit))
+            rVal += char_digit
+
+        return rVal
+
+	# WIP
+    def DataRow_Serialize(self, row_values) :
+        """! Serialize a data row section.
+        @param row_values list of row values
+
+        @return packed bytes of rows values (D message)         
 
         DataRow (B)
-            Byte1('D')
+            Byte1('D') (MSG_ID)
             Identifies the message as a data row.
 
-            Int32
+            Int32 (Length)
             Length of message contents in bytes, including self.
 
-            Int16
+            Int16 (Field_count)
             The number of column values that follow (possibly zero).
 
             Next, the following pair of fields appear for each column:
 
-            Int32
+            Int32 (Column_length)
             The length of the column value, in bytes (this count does not include itself). Can be zero. As a special case, -1 indicates a NULL column value. No value bytes follow in the NULL case.
 
-            Byten
+            Byten (Data)
             The value of the column, in the format indicated by the associated format code. n is the above length.
         """
 
+        MSG_ID = 'D'
+        HEADERFORMAT = "!ih"
+        COLDESC_FORMAT = "!ihihih"
+
+        rVal = ''
+
+        Field_count = len(row_values)
+
+        for count, row_value in enumerate (row_values) :
+            null_ter_row_name = row_name + b'\x00'
+            Table_OID = 49152               # Hard coded value
+            Column_index = count + 1
+            Type_OID = 23                   # Hard coded value. More information on OID Types : https://www.postgresql.org/docs/9.4/datatype-oid.html
+            Column_length = 4               # Hard coded value. Fits Int type size.
+            Type_modifier = -1              # Hard coded value. 
+            Format = 0                      # Hard coded value. Fits text format.
+            rVal += null_ter_row_name + struct.pack(ROWDESC_FORMAT, 
+                                                    Table_OID, 
+                                                    Column_index, 
+                                                    Type_OID, 
+                                                    Column_length, 
+                                                    Type_modifier, 
+                                                    Format)
+
+        Length = struct.calcsize(HEADERFORMAT) + len(rVal)
+
+        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length, Field_count) + rVal
+
+        return rVal
 
 
     def send_queryresult(self):
@@ -215,6 +262,3 @@ if __name__ == "__main__":
         server.serve_forever()
     except:
         server.shutdown()
-
-    # Testing
-    # test_RowDescription_Serialize(['abc', 'def'])
