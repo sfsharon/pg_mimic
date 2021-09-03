@@ -1,5 +1,5 @@
-# Taken from :
-# https://stackoverflow.com/questions/335008/creating-a-custom-odbc-driver
+# Taken from :            https://stackoverflow.com/questions/335008/creating-a-custom-odbc-driver
+# Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-formats.html
 
 import SocketServer
 import struct
@@ -28,6 +28,102 @@ class Handler(SocketServer.BaseRequestHandler):
         self.send_ReadyForQuery()
         self.read_Query()
         self.send_queryresult()
+
+    def RowDescription_Serialize(self, row_names):
+        """! Serialize a row description section.
+
+        @param row_names list of row names string
+
+        @return packed bytes of rows description (T message)        
+
+        RowDescription (B)
+
+            Byte1('T')
+            Identifies the message as a row description.
+
+            Int32 (Length)
+            Length of message contents in bytes, including self.
+
+            Int16
+            Specifies the number of fields in a row (can be zero).
+
+            Then, for each field, there is the following:
+
+            String (row_name)
+            The field name.
+
+            Int32 (Table_OID)
+            If the field can be identified as a column of a specific table, the object ID of the table; otherwise zero.
+
+            Int16 (Column_index)
+            If the field can be identified as a column of a specific table, the attribute number of the column; otherwise zero.
+
+            Int32 (Type_OID)
+            The object ID of the field's data type.
+
+            Int16 (Column_length)
+            The data type size (see pg_type.typlen). Note that negative values denote variable-width types.
+
+            Int32 (Type_modifier)
+            The type modifier (see pg_attribute.atttypmod). The meaning of the modifier is type-specific.
+
+            Int16 (Format)
+            The format code being used for the field. Currently will be zero (text) or one (binary). In a RowDescription returned from the statement variant of Describe, the format code is not yet known and will always be zero.
+        """
+        MSG_ID = 'T'
+        HEADERFORMAT = "!ih"
+        ROWDESC_FORMAT = "!ihihih"
+
+        rVal = ''
+
+        Field_count = len(row_names)
+
+        for count, row_name in enumerate (row_names) :
+            null_ter_row_name = row_name + b'\x00'
+            Table_OID = 49152               # Hard coded value
+            Column_index = count + 1
+            Type_OID = 23                   # Hard coded value. More information on OID Types : https://www.postgresql.org/docs/9.4/datatype-oid.html
+            Column_length = 4               # Hard coded value. Fits Int type size.
+            Type_modifier = -1              # Hard coded value. 
+            Format = 0                      # Hard coded value. Fits text format.
+            rVal += null_ter_row_name + struct.pack(ROWDESC_FORMAT, 
+                                                    Table_OID, 
+                                                    Column_index, 
+                                                    Type_OID, 
+                                                    Column_length, 
+                                                    Type_modifier, 
+                                                    Format)
+
+        Length = struct.calcsize(HEADERFORMAT) + len(rVal)
+
+        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length, Field_count) + rVal
+
+        return rVal
+
+    def DataRow_Section_Serialize(self) :
+        """
+        Serialize a data row section.
+
+        DataRow (B)
+            Byte1('D')
+            Identifies the message as a data row.
+
+            Int32
+            Length of message contents in bytes, including self.
+
+            Int16
+            The number of column values that follow (possibly zero).
+
+            Next, the following pair of fields appear for each column:
+
+            Int32
+            The length of the column value, in bytes (this count does not include itself). Can be zero. As a special case, -1 indicates a NULL column value. No value bytes follow in the NULL case.
+
+            Byten
+            The value of the column, in the format indicated by the associated format code. n is the above length.
+        """
+
+
 
     def send_queryresult(self):
         fieldnames = ['abc', 'def']
@@ -112,9 +208,13 @@ class Handler(SocketServer.BaseRequestHandler):
     def send_AuthenticationClearText(self):
         self.send_to_socket(struct.pack("!cii", 'R', 8, 3))
 
+
 if __name__ == "__main__":
     server = SocketServer.TCPServer(("localhost", 9879), Handler)
     try:
         server.serve_forever()
     except:
         server.shutdown()
+
+    # Testing
+    # test_RowDescription_Serialize(['abc', 'def'])
