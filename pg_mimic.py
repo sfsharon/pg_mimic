@@ -204,6 +204,37 @@ class Handler(SocketServer.BaseRequestHandler):
 
         return rVal
 
+    def Z_Msg_ReadyForQuery_Serialize(self) :
+        """! Serialize a ready for query section.
+        @param N/A
+
+        @return packed bytes of ready for query (Z message)         
+
+        ReadyForQuery (Backend)
+            Byte1('Z')
+            Identifies the message type. ReadyForQuery is sent whenever the backend is ready for a new query cycle.
+
+            Int32(5)
+            Length of message contents in bytes, including self.
+
+            Byte1
+            Current backend transaction status indicator. Possible values are :
+            'I' if idle (not in a transaction block); 
+            'T' if in a transaction block; 
+            'E' if in a failed transaction block (queries will be rejected until block is ended).
+
+        """
+
+        MSG_ID = 'Z'                # Type
+        HEADERFORMAT = "!i"         # Length 
+        Status = 'T'
+
+        Length = struct.calcsize(HEADERFORMAT) + len(Status)
+
+        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length) + Status
+
+        return rVal
+
     def send_queryresult(self):
         fieldnames = ['abc', 'def']
         HEADERFORMAT = "!cih"
