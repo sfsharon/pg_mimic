@@ -31,18 +31,6 @@ def utility_int_to_text(val) :
     return rVal
 
 class Handler(SocketServer.BaseRequestHandler):
-    def handle(self):
-        print "handle()"
-        self.read_SSLRequest()
-        self.send_to_socket("N")
-
-        self.read_StartupMessage()
-        self.send_AuthenticationClearText()
-        self.read_PasswordMessage()
-        self.send_AuthenticationOK()
-        self.send_ReadyForQuery()
-        self.read_Query()
-        self.send_queryresult()
 
     def T_Msg_RowDescription_Serialize(self, row_names):
         """! Serialize a row description section.
@@ -235,25 +223,137 @@ class Handler(SocketServer.BaseRequestHandler):
 
         return rVal
 
-    def send_queryresult(self):
-        fieldnames = ['abc', 'def']
-        HEADERFORMAT = "!cih"
-        fields = ''.join(self.fieldname_msg(name) for name in fieldnames)
-        rdheader = struct.pack(HEADERFORMAT, 'T', struct.calcsize(HEADERFORMAT) - 1 + len(fields), len(fieldnames))
-        self.send_to_socket(rdheader + fields)
+    def S_Msg_ParameterStatus_Serialize(self, param_name, param_value) :
+        """! Serialize a parameter status.
+        @param param_name   string
+        @param param_value  string
 
-        rows = [[1, 2], [3, 4]]
-        DRHEADER = "!cih"
-        for row in rows:
-            # dr_data = struct.pack("!ii", -1, -1)
-            VALFORMAT = "!i"
-            ROWFORMAT = "!iiii"
-            dr_data = struct.pack(ROWFORMAT, struct.calcsize(VALFORMAT), row[0], struct.calcsize(VALFORMAT), row[1])
-            dr_header = struct.pack(DRHEADER, 'D', struct.calcsize(DRHEADER) - 1 + len(dr_data), 2)
-            self.send_to_socket(dr_header + dr_data)
+        @return packed bytes of parameter status (S message)         
 
-        self.send_CommandComplete()
+        ParameterStatus (Backend)
+            Byte1('S')
+            Identifies the message as a run-time parameter status report.
+
+            Int32
+            Length of message contents in bytes, including self.
+
+            String
+            The name of the run-time parameter being reported.
+
+            String
+            The current value of the parameter.
+        """
+
+        MSG_ID = 'S'                # Type
+        HEADERFORMAT = "!i"         # Length 
+
+        Length = struct.calcsize(HEADERFORMAT) +    \
+                 len(param_name) + 1 +              \
+                 len(param_value) + 1 
+
+        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length) + \
+               param_name  + b'\x00' +                       \
+               param_value + b'\x00'
+
+        return rVal
+
+
+    def Startup_Msg_Deserialize(self) :
+        """! Deserialize startup message
+        @param N/A
+
+        @return N/A
+
+        StartupMessage (Frontend)
+            Int32
+            Length of message contents in bytes, including self.
+
+            Int32(196608)
+            The protocol version number. The most significant 16 bits are the major version number (3 for the protocol described here). The least significant 16 bits are the minor version number (0 for the protocol described here).
+
+            The protocol version number is followed by one or more pairs of parameter name and value strings. A zero byte is required as a terminator after the last name/value pair. Parameters can appear in any order. user is required, others are optional. Each parameter is specified as:
+
+            String
+            The parameter name. Currently recognized names are:
+
+            user
+            The database user name to connect as. Required; there is no default.
+
+            database
+            The database to connect to. Defaults to the user name.
+
+            options
+            Command-line arguments for the backend. (This is deprecated in favor of setting individual run-time parameters.) Spaces within this string are considered to separate arguments, unless escaped with a backslash (\); write \\ to represent a literal backslash.
+
+            replication
+            Used to connect in streaming replication mode, where a small set of replication commands can be issued instead of SQL statements. Value can be true, false, or database, and the default is false. See Section 52.4 for details.
+
+            In addition to the above, other parameters may be listed. Parameter names beginning with _pq_. are reserved for use as protocol extensions, while others are treated as run-time parameters to be set at backend start time. Such settings will be applied during backend start (after parsing the command-line arguments if any) and will act as session defaults.
+
+            String
+            The parameter value.        
+        """
+        data = self.read_socket()
+
+        HEADERFORMAT = "!ihh"     # Length / Protocol major ver / Protocol minor ver  
+
+        # Disregard user and password parameter/values
+
+        msglen, protocol_major_ver, protocol_minor_ver = struct.unpack(HEADERFORMAT, data[0:8])
+
+        print "*** Startup_Msg_Deserialize: Major Ver {} Minor Ver {}".format(protocol_major_ver, protocol_minor_ver)
+
+            # Original implementation
+            # ------------------------------------------------------------------
+            # def read_StartupMessage(self):
+            #     data = self.read_socket()
+            #     msglen, protoversion = struct.unpack("!ii", data[0:8])
+            #     print "msglen: {}, protoversion: {}".format(msglen, protoversion)
+            #     assert msglen == len(data)
+            #     parameters_string = data[8:]
+            #     print parameters_string.split('\x00')
+
+
+    def handle(self):
+        print "*** handle()"
+        self.Startup_Msg_Deserialize()
+        self.send_AuthenticationClearText()
+        self.read_PasswordMessage()
+        self.send_AuthenticationOK()
+        self.send_parameter_status()
         self.send_ReadyForQuery()
+        self.read_Query()
+        self.send_queryresult()
+
+    def send_parameter_status(self) :
+        msg  = self.S_Msg_ParameterStatus_Serialize ('client_encoding', 'UTF8')
+        msg += self.S_Msg_ParameterStatus_Serialize ('DateStyle', 'ISO, MDY')
+        msg += self.S_Msg_ParameterStatus_Serialize ('integer_datetimes', 'on')
+        msg += self.S_Msg_ParameterStatus_Serialize ('IntervalStyle', 'postgres')                
+        msg += self.S_Msg_ParameterStatus_Serialize ('is_superuser', 'on')
+        msg += self.S_Msg_ParameterStatus_Serialize ('server_encoding', 'UTF8')                
+        msg += self.S_Msg_ParameterStatus_Serialize ('server_version', '12.7')
+        msg += self.S_Msg_ParameterStatus_Serialize ('session_authorization', 'postgres')        
+        msg += self.S_Msg_ParameterStatus_Serialize ('standard_conforming_strings', 'on')                
+
+        self.send_to_socket(msg)        
+
+    def send_queryresult(self):
+        row_desc   =  T_Msg_RowDescription_Serialize (['abc', 'def'])  # def T_Msg_RowDescription_Serialize(self, row_names):
+        data_row_1 = D_Msg_DataRow_Serialize([1, 2])                   # def D_Msg_DataRow_Serialize(self, col_values) :
+        data_row_2 = D_Msg_DataRow_Serialize([3, 4])
+        data_row_3 = D_Msg_DataRow_Serialize([42, 43])
+        cmd_complete = C_Msg_CommandComplete_Serialize(3)              # def C_Msg_CommandComplete_Serialize(self, num_of_rows) :
+        ready_for_query = Z_Msg_ReadyForQuery_Serialize()
+
+        query_result = row_desc     + \
+                       data_row_1   + \
+                       data_row_1   + \
+                       data_row_1   + \
+                       cmd_complete + \
+                       ready_for_query
+
+        self.send_to_socket(query_result)
 
     def send_CommandComplete(self):
         HFMT = "!ci"
