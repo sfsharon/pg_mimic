@@ -159,6 +159,50 @@ class Handler(SocketServer.BaseRequestHandler):
 
         return rVal
 
+    def C_Msg_CommandComplete_Serialize(self, num_of_rows) :
+        """! Serialize a command complete section.
+        @param row_values list of column values
+
+        @return packed bytes of command complete (C message)         
+
+        CommandComplete (Backend)
+            Byte1('C')
+            Identifies the message as a command-completed response.
+
+            Int32
+            Length of message contents in bytes, including self.
+
+            String
+            The command tag. This is usually a single word that identifies which SQL command was completed.
+
+            For an INSERT command, the tag is INSERT oid rows, where rows is the number of rows inserted. oid used to be the object ID of the inserted row if rows was 1 and the target table had OIDs, but OIDs system columns are not supported anymore; therefore oid is always 0.
+
+            For a DELETE command, the tag is DELETE rows where rows is the number of rows deleted.
+
+            For an UPDATE command, the tag is UPDATE rows where rows is the number of rows updated.
+
+            For a SELECT or CREATE TABLE AS command, the tag is SELECT rows where rows is the number of rows retrieved.
+
+            For a MOVE command, the tag is MOVE rows where rows is the number of rows the cursor's position has been changed by.
+
+            For a FETCH command, the tag is FETCH rows where rows is the number of rows that have been retrieved from the cursor.
+
+            For a COPY command, the tag is COPY rows where rows is the number of rows copied. (Note: the row count appears only in PostgreSQL 8.2 and later.)
+
+        """
+
+        MSG_ID = 'C'                # Type
+        HEADERFORMAT = "!i"         # Length 
+
+        num_of_rows_string = utility_int_to_text(num_of_rows)
+
+        Tag = "SELECT " + num_of_rows_string + b'\x00'        
+ 
+        Length = struct.calcsize(HEADERFORMAT) + len(Tag)
+
+        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length) + Tag
+
+        return rVal
 
     def send_queryresult(self):
         fieldnames = ['abc', 'def']
