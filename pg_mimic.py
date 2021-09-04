@@ -15,6 +15,21 @@ def char_to_hex(char):
 def str_to_hex(inputstr):
     return " ".join(char_to_hex(char) for char in inputstr)
 
+def utility_int_to_text(val) :
+    """! Translate a string to an ordinal string, little endian
+    @param val integer to translate
+
+    @return string comprises of list of ordinals ascii value, representing the input val
+            For example : int value 192, return value 0x31/0x39/0x32
+    """
+    rVal = ''
+    while val != 0 :
+        digit = val % 10
+        val = val / 10
+        char_digit = struct.pack("!c",  str(digit))
+        rVal += char_digit
+    return rVal
+
 class Handler(SocketServer.BaseRequestHandler):
     def handle(self):
         print "handle()"
@@ -29,14 +44,14 @@ class Handler(SocketServer.BaseRequestHandler):
         self.read_Query()
         self.send_queryresult()
 
-    def RowDescription_Serialize(self, row_names):
+    def T_Msg_RowDescription_Serialize(self, row_names):
         """! Serialize a row description section.
 
         @param row_names list of row names string
 
         @return packed bytes of rows description (T message)        
 
-        RowDescription (B)
+        RowDescription (Backend)
 
             Byte1('T') (MSG_ID)
             Identifies the message as a row description.
@@ -68,11 +83,12 @@ class Handler(SocketServer.BaseRequestHandler):
             The type modifier (see pg_attribute.atttypmod). The meaning of the modifier is type-specific.
 
             Int16 (Format)
-            The format code being used for the field. Currently will be zero (text) or one (binary). In a RowDescription returned from the statement variant of Describe, the format code is not yet known and will always be zero.
+            The format code being used for the field. Currently will be zero (text) or one (binary). 
+            In a RowDescription returned from the statement variant of Describe, the format code is not yet known and will always be zero.
         """
-        MSG_ID = 'T'
-        HEADERFORMAT = "!ih"
-        ROWDESC_FORMAT = "!ihihih"
+        MSG_ID = 'T'                    # Type
+        HEADERFORMAT = "!ih"            # Length / Field count
+        ROWDESC_FORMAT = "!ihihih"      # Table OID / Column index / Type OID / Column length / Type modifier / Format
 
         rVal = ''
 
@@ -100,29 +116,13 @@ class Handler(SocketServer.BaseRequestHandler):
 
         return rVal
 
-    def utility_int_to_text(val) :
-        """! Translate a string to an ordinal string, little endian
-        @param val integer to translate
+    def D_Msg_DataRow_Serialize(self, col_values) :
+        """! Serialize a data col section.
+        @param row_values list of column values
 
-        @return list of ordinals ascii value, representing the input val
-        """
-        rVal = ''
-        while val != 0 :
-            digit = val % 10
-            val = val / 10
-            char_digit = struct.pack("!c",  str(digit))
-            rVal += char_digit
+        @return packed bytes of column values (D message)         
 
-        return rVal
-
-	# WIP
-    def DataRow_Serialize(self, row_values) :
-        """! Serialize a data row section.
-        @param row_values list of row values
-
-        @return packed bytes of rows values (D message)         
-
-        DataRow (B)
+        DataRow (Backend)
             Byte1('D') (MSG_ID)
             Identifies the message as a data row.
 
@@ -141,29 +141,17 @@ class Handler(SocketServer.BaseRequestHandler):
             The value of the column, in the format indicated by the associated format code. n is the above length.
         """
 
-        MSG_ID = 'D'
-        HEADERFORMAT = "!ih"
-        COLDESC_FORMAT = "!ihihih"
+        MSG_ID = 'D'                # Type
+        HEADERFORMAT = "!ih"        # Length / Field count
+        COLDESC_FORMAT = "!i"       # Column length
 
         rVal = ''
 
-        Field_count = len(row_values)
+        Field_count = len(col_values)
 
-        for count, row_value in enumerate (row_values) :
-            null_ter_row_name = row_name + b'\x00'
-            Table_OID = 49152               # Hard coded value
-            Column_index = count + 1
-            Type_OID = 23                   # Hard coded value. More information on OID Types : https://www.postgresql.org/docs/9.4/datatype-oid.html
-            Column_length = 4               # Hard coded value. Fits Int type size.
-            Type_modifier = -1              # Hard coded value. 
-            Format = 0                      # Hard coded value. Fits text format.
-            rVal += null_ter_row_name + struct.pack(ROWDESC_FORMAT, 
-                                                    Table_OID, 
-                                                    Column_index, 
-                                                    Type_OID, 
-                                                    Column_length, 
-                                                    Type_modifier, 
-                                                    Format)
+        for count, col_value in enumerate (col_values) :
+            col_value_string = utility_int_to_text(col_value)
+            rVal += struct.pack(COLDESC_FORMAT, len(col_value_string)) + col_value_string
 
         Length = struct.calcsize(HEADERFORMAT) + len(rVal)
 
