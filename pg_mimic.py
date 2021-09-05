@@ -28,9 +28,12 @@ def utility_int_to_text(val) :
         val = val / 10
         char_digit = struct.pack("!c",  str(digit))
         rVal += char_digit
+    rVal = rVal[::-1]           # Reverse the string
     return rVal
 
 class Handler(SocketServer.BaseRequestHandler):
+
+    curr_query = ''
 
     def T_Msg_RowDescription_Serialize(self, row_names):
         """! Serialize a row description section.
@@ -147,9 +150,9 @@ class Handler(SocketServer.BaseRequestHandler):
 
         return rVal
 
-    def C_Msg_CommandComplete_Serialize(self, num_of_rows) :
+    def C_Msg_CommandComplete_Serialize(self, tag_name) :
         """! Serialize a command complete section.
-        @param row_values list of column values
+        @param tag_name Null terminated string of the tag name
 
         @return packed bytes of command complete (C message)         
 
@@ -182,13 +185,9 @@ class Handler(SocketServer.BaseRequestHandler):
         MSG_ID = 'C'                # Type
         HEADERFORMAT = "!i"         # Length 
 
-        num_of_rows_string = utility_int_to_text(num_of_rows)
+        Length = struct.calcsize(HEADERFORMAT) + len(tag_name)        
 
-        Tag = "SELECT " + num_of_rows_string + b'\x00'        
- 
-        Length = struct.calcsize(HEADERFORMAT) + len(Tag)
-
-        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length) + Tag
+        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length) + tag_name
 
         return rVal
 
@@ -258,6 +257,33 @@ class Handler(SocketServer.BaseRequestHandler):
         return rVal
 
 
+    def Q_Msg_Query_Deserialize(self) :
+        """! Deserialize Query message
+        @param N/A
+
+        @return Query string
+
+        Query (Frontend)
+            Byte1('Q')
+            Identifies the message as a simple query.
+
+            Int32
+            Length of message contents in bytes, including self.
+
+            String
+            The query string itself.
+        """
+        data = self.read_socket()
+
+        HEADERFORMAT = "!ci"     # MsgID / Length
+        header_length = struct.calcsize(HEADERFORMAT)
+        msg_ident, msg_len = struct.unpack(HEADERFORMAT, data[0:header_length])
+        assert msg_ident == "Q"
+        self.curr_query = data[header_length:]
+
+        print "*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
+
+
     def Startup_Msg_Deserialize(self) :
         """! Deserialize startup message
         @param N/A
@@ -319,13 +345,13 @@ class Handler(SocketServer.BaseRequestHandler):
         self.Startup_Msg_Deserialize()
         self.send_AuthenticationClearText()
         self.read_PasswordMessage()
-        self.send_AuthenticationOK()
-        self.send_parameter_status()
+        self.send_AuthenticationOK_and_param_status()
         self.send_ReadyForQuery()
-        self.read_Query()
-        self.send_queryresult()
+        while True :
+            self.Q_Msg_Query_Deserialize()
+            self.send_queryresult()
 
-    def send_parameter_status(self) :
+    def prepare_parameter_status(self) :
         msg  = self.S_Msg_ParameterStatus_Serialize ('client_encoding', 'UTF8')
         msg += self.S_Msg_ParameterStatus_Serialize ('DateStyle', 'ISO, MDY')
         msg += self.S_Msg_ParameterStatus_Serialize ('integer_datetimes', 'on')
@@ -336,22 +362,33 @@ class Handler(SocketServer.BaseRequestHandler):
         msg += self.S_Msg_ParameterStatus_Serialize ('session_authorization', 'postgres')        
         msg += self.S_Msg_ParameterStatus_Serialize ('standard_conforming_strings', 'on')                
 
-        self.send_to_socket(msg)        
+        return msg      
 
     def send_queryresult(self):
-        row_desc   =  T_Msg_RowDescription_Serialize (['abc', 'def'])  # def T_Msg_RowDescription_Serialize(self, row_names):
-        data_row_1 = D_Msg_DataRow_Serialize([1, 2])                   # def D_Msg_DataRow_Serialize(self, col_values) :
-        data_row_2 = D_Msg_DataRow_Serialize([3, 4])
-        data_row_3 = D_Msg_DataRow_Serialize([42, 43])
-        cmd_complete = C_Msg_CommandComplete_Serialize(3)              # def C_Msg_CommandComplete_Serialize(self, num_of_rows) :
-        ready_for_query = Z_Msg_ReadyForQuery_Serialize()
+        query_result = ''
 
-        query_result = row_desc     + \
-                       data_row_1   + \
-                       data_row_1   + \
-                       data_row_1   + \
-                       cmd_complete + \
-                       ready_for_query
+        if 'BEGIN' in self.curr_query :
+            cmd_complete = self.C_Msg_CommandComplete_Serialize('BEGIN' + b'\x00')              
+            ready_for_query = self.Z_Msg_ReadyForQuery_Serialize()
+
+            query_result = cmd_complete + ready_for_query
+        else :  # Assumes 'SELECT' query
+            row_desc   =  self.T_Msg_RowDescription_Serialize (['abc', 'def'])  
+            data_row_1 = self.D_Msg_DataRow_Serialize([1, 2])                   
+            data_row_2 = self.D_Msg_DataRow_Serialize([193, 456])
+            data_row_3 = self.D_Msg_DataRow_Serialize([842, 843])
+
+            num_of_rows_string = utility_int_to_text(3)
+            tag_name = "SELECT " + num_of_rows_string + b'\x00' 
+            cmd_complete = self.C_Msg_CommandComplete_Serialize(tag_name)        
+            ready_for_query = self.Z_Msg_ReadyForQuery_Serialize()
+
+            query_result = row_desc     + \
+                        data_row_1   + \
+                        data_row_2   + \
+                        data_row_3   + \
+                        cmd_complete + \
+                        ready_for_query
 
         self.send_to_socket(query_result)
 
@@ -412,16 +449,21 @@ class Handler(SocketServer.BaseRequestHandler):
         parameters_string = data[8:]
         print parameters_string.split('\x00')
 
-    def send_AuthenticationOK(self):
-        self.send_to_socket(struct.pack("!cii", 'R', 8, 0))
-
     def send_AuthenticationClearText(self):
         self.send_to_socket(struct.pack("!cii", 'R', 8, 3))
+
+    def send_AuthenticationOK_and_param_status(self):
+        param_status = self.prepare_parameter_status()
+        self.send_to_socket(struct.pack("!cii", 'R', 8, 0) + param_status)
+
+
 
 
 if __name__ == "__main__":
     server = SocketServer.TCPServer(("localhost", 9879), Handler)
     try:
+        print "*** Waiting for connection"
         server.serve_forever()
     except:
+        print "*** Shutting down"
         server.shutdown()
