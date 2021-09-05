@@ -3,6 +3,18 @@
 
 import SocketServer
 import struct
+import pysqream
+
+def send_query(query):
+    con = pysqream.connect(host='192.168.4.65', port=5001, database='master',
+                           username='sqream', password='sqream', clustered=False)
+    cur = con.cursor()
+    cur.execute(query)
+    query_result = cur.fetchall()
+    result = [res[0] for res in query_result] # Naive solution for now -  [a,b,c,d,e,f]
+    # result = [[res for res in row] for row in query_result] #general solution for later -  [[a,b,c], [d,e,f],[g,h,i]]
+    con.close()
+    return result
 
 def char_to_hex(char):
     retval = hex(ord(char))
