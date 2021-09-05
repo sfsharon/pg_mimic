@@ -47,6 +47,22 @@ class Handler(SocketServer.BaseRequestHandler):
 
     curr_query = ''
 
+    def handle(self):
+        print "*** handle()"
+        self.Startup_Msg_Deserialize()
+        self.send_AuthenticationClearText()
+        self.read_PasswordMessage()
+        self.send_AuthenticationOK_and_param_status()
+        self.send_ReadyForQuery()
+        while True :
+            data = self.read_socket()
+            msg_ident = struct.unpack("!c", data[0])
+            if msg_ident == 'Q':
+                self.Q_Msg_Query_Deserialize(data)
+            elif msg_ident == 'P':
+                self.P_Msg_Query_Deserialize(data)
+            self.send_queryresult()
+
     def T_Msg_RowDescription_Serialize(self, row_names):
         """! Serialize a row description section.
 
@@ -269,7 +285,7 @@ class Handler(SocketServer.BaseRequestHandler):
         return rVal
 
 
-    def Q_Msg_Query_Deserialize(self) :
+    def Q_Msg_Query_Deserialize(self, data) :
         """! Deserialize Query message
         @param N/A
 
@@ -285,7 +301,6 @@ class Handler(SocketServer.BaseRequestHandler):
             String
             The query string itself.
         """
-        data = self.read_socket()
 
         HEADERFORMAT = "!ci"     # MsgID / Length
         header_length = struct.calcsize(HEADERFORMAT)
@@ -295,6 +310,39 @@ class Handler(SocketServer.BaseRequestHandler):
 
         print "*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
 
+    def P_Msg_Query_Deserialize(self) :
+        """! Deserialize Parse message
+        @param N/A
+
+        @return Parse string
+        Parse (Frontend)
+            Byte1('P')
+            Identifies the message as a Parse command.
+
+            Int32
+            Length of message contents in bytes, including self.
+
+            String
+            The name of the destination prepared statement (an empty string selects the unnamed prepared statement).
+
+            String
+            The query string to be parsed.
+
+            Int16
+            The number of parameter data types specified (can be zero). Note that this is not an indication of the number of parameters that might appear in the query string, only the number that the frontend wants to prespecify types for.
+
+            Then, for each parameter, there is the following:
+
+            Int32
+            Specifies the object ID of the parameter data type. Placing a zero here is equivalent to leaving the type unspecified.
+        """
+        HEADERFORMAT = "!ci"     # MsgID / Length
+        header_length = struct.calcsize(HEADERFORMAT)
+        msg_ident, msg_len = struct.unpack(HEADERFORMAT, data[0:header_length])
+        assert msg_ident == "Q"
+        self.curr_query = data[header_length:]
+
+        print "*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
 
     def Startup_Msg_Deserialize(self) :
         """! Deserialize startup message
@@ -350,18 +398,6 @@ class Handler(SocketServer.BaseRequestHandler):
             #     assert msglen == len(data)
             #     parameters_string = data[8:]
             #     print parameters_string.split('\x00')
-
-
-    def handle(self):
-        print "*** handle()"
-        self.Startup_Msg_Deserialize()
-        self.send_AuthenticationClearText()
-        self.read_PasswordMessage()
-        self.send_AuthenticationOK_and_param_status()
-        self.send_ReadyForQuery()
-        while True :
-            self.Q_Msg_Query_Deserialize()
-            self.send_queryresult()
 
     def prepare_parameter_status(self) :
         msg  = self.S_Msg_ParameterStatus_Serialize ('client_encoding', 'UTF8')
@@ -446,7 +482,6 @@ class Handler(SocketServer.BaseRequestHandler):
         assert b == "p"
         print "Password: {}".format(data[5:])
 
-
     def read_SSLRequest(self):
         data = self.read_socket()
         msglen, sslcode = struct.unpack("!ii", data)
@@ -466,13 +501,14 @@ class Handler(SocketServer.BaseRequestHandler):
 
     def send_AuthenticationOK_and_param_status(self):
         param_status = self.prepare_parameter_status()
-        self.send_to_socket(struct.pack("!cii", 'R', 8, 0) + param_status)
+        auth_req_OK = struct.pack("!cii", 'R', 8, 0) # Authentication Request OK
+        self.send_to_socket(auth_req_OK + param_status)
 
 
 
 
 if __name__ == "__main__":
-    server = SocketServer.TCPServer(("localhost", 9879), Handler)
+    server = SocketServer.TCPServer(("localhost", 9876), Handler)
     try:
         print "*** Waiting for connection"
         server.serve_forever()
