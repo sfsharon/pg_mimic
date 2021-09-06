@@ -208,7 +208,7 @@ class Handler(SocketServer.BaseRequestHandler):
         data_to_send = ""
         data_to_send += self.S_Msg_ParameterStatus_Serialize('is_superuser', 'on')
         data_to_send += self.S_Msg_ParameterStatus_Serialize('session_authorization', 'postgres') #TODO - this should contain username
-        data_to_send += self.C_Msg_CommandComplete_Serialize(message_tag)
+        data_to_send += self.C_Msg_CommandComplete_Serialize(message_tag + b'\x00')
         data_to_send += self.Z_Msg_ReadyForQuery_Serialize()
         self.send_to_socket(data_to_send)
 
