@@ -81,11 +81,11 @@ class Handler(SocketServer.BaseRequestHandler):
             messages.append([msg_type, msg_len, msg_data])
             hex_data = hex_data[2 + msg_len * 2:]
 
-        print messages
-        print "\n##########################   READING DATA   #################################"
-        print "Received {} bytes: {}".format(len(data), repr(data))
-        print "DATA: {},\nHEX: {} ".format(data, str_to_hex(data))
-        print "#############################################################################"
+        # print messages
+        # print "\n##########################   READING DATA   #################################"
+        # print "Received {} bytes: {}".format(len(data), repr(data))
+        # print "DATA: {},\nHEX: {} ".format(data, str_to_hex(data))
+        # print "#############################################################################"
         return messages
 
     def get_queries_from_packet(self, msgs):
@@ -168,12 +168,16 @@ class Handler(SocketServer.BaseRequestHandler):
         
         if "SELECT ns.nspname, a.typname, a.oid, a.typrelid, a.typbasetype" in query:
             return ['nspname', 'typname', 'oid', 'typrelid', 'typbasetype', 'type', 'elemoid', 'ord'], self.prepare_setup_msg_1_data()
+
         if "SELECT typ.oid, att.attname, att.atttypid" in query:
-            return ['oid', 'attname', 'atttypid'], []
+            return ['oid', 'attname', 'atttypid'], ''
+
         if "SELECT pg_type.oid, enumlabel" in query:
-            return ['oid', 'enumlabel'], []
+            return ['oid', 'enumlabel'], ''
+
         if "select character_set_name" in query:
             return ['character_set_name'], self.D_Msg_DataRow_Serialize(['UTF8'])
+
         if "select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE" in query:
             return ['table_schema', 'table_name', 'table_type'], self.D_Msg_DataRow_Serialize(['public', 't', 'BASE TABLE'])
 
@@ -656,13 +660,13 @@ class Handler(SocketServer.BaseRequestHandler):
     def read_socket(self):
         print "Trying recv..."
         data = self.request.recv(1024)
-        print "Received {} bytes: {}".format(len(data), repr(data))
-        print "Hex: {}".format(str_to_hex(data))
+        # print "Received {} bytes: {}".format(len(data), repr(data))
+        # print "Hex: {}".format(str_to_hex(data))
         return data
 
     def send_to_socket(self, data):
-        print "Sending {} bytes: {}".format(len(data), repr(data))
-        print "Hex: {}".format(str_to_hex(data))
+        # print "Sending {} bytes: {}".format(len(data), repr(data))
+        # print "Hex: {}".format(str_to_hex(data))
         return self.request.sendall(data)
 
     def read_Query(self):
@@ -708,6 +712,7 @@ class Handler(SocketServer.BaseRequestHandler):
 
 
 if __name__ == "__main__":
+    SocketServer.TCPServer.allow_reuse_address = True
     server = SocketServer.TCPServer(("192.168.4.65", 6666), Handler)
     try:
         print "*** Waiting for connection"
