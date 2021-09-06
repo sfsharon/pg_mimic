@@ -3,6 +3,7 @@
 
 import SocketServer
 import struct
+import time
 # import pysqream
 #
 # def send_query(query):
@@ -27,6 +28,9 @@ def char_to_hex(char):
 def str_to_hex(inputstr):
     return " ".join(char_to_hex(char) for char in inputstr)
 
+def str_to_hex_raw(inputstr):
+    return "".join(char_to_hex(char) for char in inputstr)
+
 def utility_int_to_text(val) :
     """! Translate a string to an ordinal string, little endian
     @param val integer to translate
@@ -46,22 +50,216 @@ def utility_int_to_text(val) :
 class Handler(SocketServer.BaseRequestHandler):
 
     curr_query = ''
+    timeout_seconds = 1
 
     def handle(self):
         print "*** handle()"
         self.Startup_Msg_Deserialize()
-        self.send_AuthenticationClearText()
-        self.read_PasswordMessage()
+        #self.send_AuthenticationClearText()
+        #self.read_PasswordMessage()
         self.send_AuthenticationOK_and_param_status()
-        self.send_ReadyForQuery()
-        while True :
-            data = self.read_socket()
-            msg_ident = struct.unpack("!c", data[0])
-            if msg_ident == 'Q':
-                self.Q_Msg_Query_Deserialize(data)
-            elif msg_ident == 'P':
-                self.P_Msg_Query_Deserialize(data)
-            self.send_queryresult()
+        last_worked_time = time.time()
+        while True:
+            data = self.read_socket_to_list()
+            if data:
+                queries = self.get_queries_from_packet(data)
+                results = self.send_queries_to_sqream(queries)
+                self.send_results(results)
+                last_worked_time = time.time()
+            elif time.time() - last_worked_time > self.timeout_seconds:
+                break
+
+    def read_socket_to_list(self):
+        data = self.request.recv(1024 * 1024 * 1024)
+        hex_data = str_to_hex_raw(data)
+
+        messages = []
+        while hex_data:
+            msg_type = int(hex_data[0:2])
+            msg_len = int(hex_data[2:10], 16)
+            msg_data = hex_data[10:2 + 10 + msg_len * 2]
+            messages.append([msg_type, msg_len, msg_data])
+            hex_data = hex_data[2 + msg_len * 2:]
+
+        print messages
+        print "\n##########################   READING DATA   #################################"
+        print "Received {} bytes: {}".format(len(data), repr(data))
+        print "DATA: {},\nHEX: {} ".format(data, str_to_hex(data))
+        print "#############################################################################"
+        return messages
+
+    def get_queries_from_packet(self, msgs):
+        """! Extracts Parse and Query messages from incoming frontend packet
+
+        @param msgs - the postgres messages in the incoming frontend packet
+
+        @return a list containing a all parse and query messages
+
+        Each element of the list will be a list containing:
+            * A message id char - either P for Parse or Q for Query - first position
+            * The query - second position
+
+        For example:
+            ['P', 'select * from t'] or ['Q', 'Discard all']
+        """
+        queries = []
+        for msg in msgs:
+            if msg[0] == 50:
+                query = msg[2]
+                queries.append(['P', query.decode('hex')])
+            elif msg[0] == 51:
+                query = msg[2]
+                queries.append(['Q', query.decode('hex')])
+        return queries
+
+    def send_queries_to_sqream(self, queries):
+        """! Sends queries to sqream
+
+        @param queries - a list of queries, each in a list containing their origin message type ('P' or 'Q')
+        and the query
+
+        @return a list of lists, each containing they origin message type and the query's result from sqream
+
+        Each element of the list will be a list containing:
+            * A message id char - either P for Parse or Q for Query - first position
+
+            FOR Q MESSAGES
+            * the command completion msg with relevant tag - second position
+
+            FOR P MESSAGES
+            * the table row description message - second position - NOT SERIALIZED
+            * the table data rows - third position - SERIALIZED
+
+        For example:
+            ['P', row_description_msg, data_row_msg] or ['Q', command_completion_msg]
+
+        """
+        results = []
+        for query in queries:
+            if query[0] == 'Q':
+                cmd_completion_msg = self.get_completion_msg_from_q_msg(query[1])
+                results.append(['Q', cmd_completion_msg])
+            elif query[0] == 'P':
+                row_desc_msg, data_row_msg = self.excecute_sqream_query(query[1])
+                results.append(['P', row_desc_msg, data_row_msg])
+            else:
+                raise ValueError('Tried to send a non Query or Parse message to Sqream')
+        return results
+
+    def get_completion_msg_from_q_msg(self, query):
+        """! Creates a command completion message containing the relevant tag based on query message
+            @param results - a query message
+
+            @return a command completion message containing the relevant tag based on query message
+        """
+        tag = 'DISCARD ALL'
+        # tag = #TODO - get correct value from query
+        return tag
+
+
+    def excecute_sqream_query(self, query):
+        """! Sends query to sqream 
+            @param query to run in sqream
+        
+            @return row description message, data row messages - two lists containing the query's results
+            
+            NOTE - CURRENTLY BYPASSED WITH HARD CODED VALUES FOR TESTING AND DEVELOPMENT - will be conected to sqream in the future
+        """
+        
+        if "SELECT ns.nspname, a.typname, a.oid, a.typrelid, a.typbasetype" in query:
+            return ['nspname', 'typname', 'oid', 'typrelid', 'typbasetype', 'type', 'elemoid', 'ord'], self.prepare_setup_msg_1_data()
+        if "SELECT typ.oid, att.attname, att.atttypid" in query:
+            return ['oid', 'attname', 'atttypid'], []
+        if "SELECT pg_type.oid, enumlabel" in query:
+            return ['oid', 'enumlabel'], []
+        if "select character_set_name" in query:
+            return ['character_set_name'], self.D_Msg_DataRow_Serialize(['UTF8'])
+        if "select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE" in query:
+            return ['table_schema', 'table_name', 'table_type'], self.D_Msg_DataRow_Serialize(['public', 't', 'BASE TABLE'])
+
+    def send_results(self, results):
+        """! Sends results to frontend by wrapping results in messages as required by postgres communication convention
+            @param results - a list of results to be sent, each containing the original message type in its first element
+
+            @return N/A
+    
+            Note - parse messages will be sent as a group. i.e. given 3 parse messages the reply will contain 3 results
+        """
+        data_to_send = ""
+        for result in results:
+            if result[0] == 'Q':
+                self.send_Q_result(result[1])
+            elif result[0] == 'P':
+                data_to_send += self.One_Msg_ParseCompletion_Serialize()
+                data_to_send += self.Two_Msg_BindCompletion_Serialize()
+                data_to_send += self.T_Msg_RowDescription_Serialize(result[1])
+                data_to_send += result[2]
+                data_to_send += self.C_Msg_CommandComplete_Serialize('SELECT 1' + b'\x00')
+        if data_to_send:
+            data_to_send += self.Z_Msg_ReadyForQuery_Serialize()
+            self.send_to_socket(data_to_send)
+
+    def send_Q_result(self, message_tag):
+        """! Sends reply to Query message
+            @param completion_msg - the command completion message tag
+
+            @return N/A
+        """
+        data_to_send = ""
+        data_to_send += self.S_Msg_ParameterStatus_Serialize('is_superuser', 'on')
+        data_to_send += self.S_Msg_ParameterStatus_Serialize('session_authorization', 'postgres') #TODO - this should contain username
+        data_to_send += self.C_Msg_CommandComplete_Serialize(message_tag)
+        data_to_send += self.Z_Msg_ReadyForQuery_Serialize()
+        self.send_to_socket(data_to_send)
+
+
+
+    def One_Msg_ParseCompletion_Serialize(self):
+        """! Serialize a parse complete message
+        @param N/A
+
+        @return packed bytes of ready for query (1 message)
+
+        ParseComplete (Backend)
+            Byte('1')
+                Identifies the message as a Parse-complete indicator.
+
+            Int32(4)
+                Length of message contents in bytes, including self.
+        """
+        MSG_ID = '1'  # Type
+        HEADERFORMAT = "!i"  # Length
+
+        Length = struct.calcsize(HEADERFORMAT)
+
+        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length)
+
+        return rVal
+
+
+    def Two_Msg_BindCompletion_Serialize(self):
+        """! Serialize a bind complete message
+        @param N/A
+
+        @return packed bytes of ready for query (2 message)
+
+        BindComplete (Backend)
+            Byte('2')
+                Identifies the message as a Bind-complete indicator.
+
+            Int32(4)
+                Length of message contents in bytes, including self.
+        """
+
+        MSG_ID = '2'  # Type
+        HEADERFORMAT = "!i"  # Length
+
+        Length = struct.calcsize(HEADERFORMAT)
+
+        rVal = MSG_ID + struct.pack(HEADERFORMAT, Length)
+
+        return rVal
+
 
     def T_Msg_RowDescription_Serialize(self, row_names):
         """! Serialize a row description section.
@@ -169,7 +367,10 @@ class Handler(SocketServer.BaseRequestHandler):
         Field_count = len(col_values)
 
         for count, col_value in enumerate (col_values) :
-            col_value_string = utility_int_to_text(col_value)
+            if isinstance(col_value, int):
+                col_value_string = utility_int_to_text(col_value)
+            else:
+                col_value_string = col_value
             rVal += struct.pack(COLDESC_FORMAT, len(col_value_string)) + col_value_string
 
         Length = struct.calcsize(HEADERFORMAT) + len(rVal)
@@ -310,7 +511,7 @@ class Handler(SocketServer.BaseRequestHandler):
 
         print "*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
 
-    def P_Msg_Query_Deserialize(self) :
+    def P_Msg_Query_Deserialize(self, data):
         """! Deserialize Parse message
         @param N/A
 
@@ -339,7 +540,7 @@ class Handler(SocketServer.BaseRequestHandler):
         HEADERFORMAT = "!ci"     # MsgID / Length
         header_length = struct.calcsize(HEADERFORMAT)
         msg_ident, msg_len = struct.unpack(HEADERFORMAT, data[0:header_length])
-        assert msg_ident == "Q"
+        assert msg_ident == "P"
         self.curr_query = data[header_length:]
 
         print "*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
@@ -412,31 +613,29 @@ class Handler(SocketServer.BaseRequestHandler):
 
         return msg      
 
-    def send_queryresult(self):
+    def prepare_setup_msg_1_data(self):
+        msg = self.D_Msg_DataRow_Serialize(['pg_catalog', 'bool', 16, 0, 0, 'b', 0, 0])
+        msg += self.D_Msg_DataRow_Serialize(['pg_catalog', 'regproc', 24, 0, 0, 'b', 0, 0])
+        msg += self.D_Msg_DataRow_Serialize(['pg_catalog', 'text', 25, 0, 0, 'b', 0, 0])
+        return msg
+
+    def send_queryresult(self, row_desc, row_data):
         query_result = ''
+        data_row_1 = self.D_Msg_DataRow_Serialize([1, 2])
+        data_row_2 = self.D_Msg_DataRow_Serialize([193, 456])
+        data_row_3 = self.D_Msg_DataRow_Serialize([842, 843])
 
-        if 'BEGIN' in self.curr_query :
-            cmd_complete = self.C_Msg_CommandComplete_Serialize('BEGIN' + b'\x00')              
-            ready_for_query = self.Z_Msg_ReadyForQuery_Serialize()
+        num_of_rows_string = utility_int_to_text(3)
+        tag_name = "SELECT " + num_of_rows_string + b'\x00'
+        cmd_complete = self.C_Msg_CommandComplete_Serialize(tag_name)
+        parse_complete = self.One_Msg_ParseCompletion_Serialize()
+        bind_complete = self.Two_Msg_BindCompletion_Serialize()
 
-            query_result = cmd_complete + ready_for_query
-        else :  # Assumes 'SELECT' query
-            row_desc   =  self.T_Msg_RowDescription_Serialize (['abc', 'def'])  
-            data_row_1 = self.D_Msg_DataRow_Serialize([1, 2])                   
-            data_row_2 = self.D_Msg_DataRow_Serialize([193, 456])
-            data_row_3 = self.D_Msg_DataRow_Serialize([842, 843])
-
-            num_of_rows_string = utility_int_to_text(3)
-            tag_name = "SELECT " + num_of_rows_string + b'\x00' 
-            cmd_complete = self.C_Msg_CommandComplete_Serialize(tag_name)        
-            ready_for_query = self.Z_Msg_ReadyForQuery_Serialize()
-
-            query_result = row_desc     + \
-                        data_row_1   + \
-                        data_row_2   + \
-                        data_row_3   + \
-                        cmd_complete + \
-                        ready_for_query
+        query_result = parse_complete + \
+                    bind_complete + \
+                    row_desc     + \
+                    row_data   + \
+                    cmd_complete
 
         self.send_to_socket(query_result)
 
@@ -502,13 +701,14 @@ class Handler(SocketServer.BaseRequestHandler):
     def send_AuthenticationOK_and_param_status(self):
         param_status = self.prepare_parameter_status()
         auth_req_OK = struct.pack("!cii", 'R', 8, 0) # Authentication Request OK
-        self.send_to_socket(auth_req_OK + param_status)
+        read_for_query = self.Z_Msg_ReadyForQuery_Serialize()
+        self.send_to_socket(auth_req_OK + param_status + read_for_query)
 
 
 
 
 if __name__ == "__main__":
-    server = SocketServer.TCPServer(("localhost", 9876), Handler)
+    server = SocketServer.TCPServer(("192.168.4.65", 6666), Handler)
     try:
         print "*** Waiting for connection"
         server.serve_forever()
