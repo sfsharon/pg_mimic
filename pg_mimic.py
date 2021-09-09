@@ -77,7 +77,7 @@ class Handler(SocketServer.BaseRequestHandler):
         while hex_data:
             msg_type = int(hex_data[0:2])
             msg_len = int(hex_data[2:10], 16)
-            msg_data = hex_data[10:2 + 10 + msg_len * 2]
+            msg_data = hex_data[10:2 + msg_len*2]
             messages.append([msg_type, msg_len, msg_data])
             hex_data = hex_data[2 + msg_len * 2:]
 
@@ -152,8 +152,7 @@ class Handler(SocketServer.BaseRequestHandler):
 
             @return a command completion message containing the relevant tag based on query message
         """
-        tag = 'DISCARD ALL'
-        # tag = #TODO - get correct value from query
+        tag = query
         return tag
 
 
@@ -165,7 +164,7 @@ class Handler(SocketServer.BaseRequestHandler):
             
             NOTE - CURRENTLY BYPASSED WITH HARD CODED VALUES FOR TESTING AND DEVELOPMENT - will be conected to sqream in the future
         """
-        
+        print("\n\n\n {}".format(query))
         if "SELECT ns.nspname, a.typname, a.oid, a.typrelid, a.typbasetype" in query:
             return ['nspname', 'typname', 'oid', 'typrelid', 'typbasetype', 'type', 'elemoid', 'ord'], self.prepare_setup_msg_1_data()
 
@@ -180,6 +179,25 @@ class Handler(SocketServer.BaseRequestHandler):
 
         if "select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE" in query:
             return ['table_schema', 'table_name', 'table_type'], self.D_Msg_DataRow_Serialize(['public', 't', 'BASE TABLE'])
+
+        if 'select "$Table"."xint" as "xint"' in query:
+            return ['xint'], self.D_Msg_DataRow_Serialize(['5']) + self.D_Msg_DataRow_Serialize(['4']) + self.D_Msg_DataRow_Serialize(['3']) + self.D_Msg_DataRow_Serialize(['2']) + self.D_Msg_DataRow_Serialize(['1'])
+
+        if 'select sum("rows"."xint")' in query:
+            return ['a0'], self.D_Msg_DataRow_Serialize(['15'])
+
+        if 'select COLUMN_NAME, ORDINAL_POSITION, IS_NULLABLE' in query:
+            return ['column_name', 'ordinal_position', 'is_nullable', 'data_type'], self.D_Msg_DataRow_Serialize(['xint', '1', 'YES', 'integer']) #TODO - is the second element here '.'?
+
+        if 'pkcol.COLUMN_NAME as PK_COLUMN_NAME' in query:
+            return ['pk_column_name', 'fk_table_schema', 'fk_table_name', 'fk_column_name', 'ordinal', 'fk_name'], ''
+
+        if 'pkcol.TABLE_SCHEMA AS PK_TABLE_SCHEMA' in query:
+            return ['pk_table_schema', 'pk_table_name', 'pk_column_name', 'fk_column_name', 'ordinal', 'fk_name'], ''
+
+        if "select i.CONSTRAINT_SCHEMA || '_' || i.CONSTRAINT_NAME" in query:
+            return ['index_name', 'column_name', 'ordinal_position', 'primary_key'], ''
+
 
     def send_results(self, results):
         """! Sends results to frontend by wrapping results in messages as required by postgres communication convention
@@ -447,7 +465,7 @@ class Handler(SocketServer.BaseRequestHandler):
 
         MSG_ID = 'Z'                # Type
         HEADERFORMAT = "!i"         # Length 
-        Status = 'T'
+        Status = 'I'
 
         Length = struct.calcsize(HEADERFORMAT) + len(Status)
 
