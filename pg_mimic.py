@@ -1,4 +1,4 @@
-# Taken from :            https://stackoverflow.com/questions/335008/creating-a-custom-odbc-driver
+# Based on code from Stackoverflow post : https://stackoverflow.com/questions/335008/creating-a-custom-odbc-driver
 # Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-formats.html
 
 import SocketServer
