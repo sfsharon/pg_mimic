@@ -2,13 +2,17 @@
 """
 Session State machine.
 Follows the reuiqred protocol messages, and keeps a state to respond corretly.
-Based on : https://www.python-course.eu/finite_state_machine.php
+FSM Based on : https://www.python-course.eu/finite_state_machine.php
+Logging : https://docs.python.org/3/howto/logging.html
+          https://realpython.com/python-logging/
 """
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 12/10/2021 0741
-  1. Add the communication object (server)
+#  TODO 14/10/2021 1730
+  1. Add state to the TCP Server handle function, so that after receiving a second message, the statemachine will remember that it got one before.
   2. Complete the initialization session protocol.   
 """
 class StateMachine:    
@@ -44,6 +48,9 @@ class StateMachine:
 
 # ------------------------------------------------------------------------------------
 
+# *****************************************************
+# * Postgres Serialize / Deserialize functions
+# *****************************************************
 def Startup_Msg_Deserialize(data) :
     """! Deserialize startup message
     @param N/A
@@ -139,6 +146,9 @@ def AuthRequest_Msg_Serialize():
     # rVal = auth_req_OK + param_status + read_for_query
     return auth_req_OK
 
+# *****************************************************
+# * Postgres Protocol Implementation
+# *****************************************************
 def startup_transition() :
     # RX Request
     txt = comm.rx()
@@ -172,9 +182,46 @@ def password_state_transition() :
     # # Next state
     # newState = "password_state"
 
+# *****************************************************
+# * PG server
+# *****************************************************
+import socketserver
 
+
+class MyPGHandler(socketserver.BaseRequestHandler):
+    """
+    The request handler class for Postgres mimic server.
+    """
+    INPUT_BUFF_SIZE = 1024 * 1024
+
+    def __init__(self, request, client_address, server) :
+        self.pg_mimic = StateMachine()
+        self.pg_mimic.add_state("Startup", startup_transition)
+        self.pg_mimic.add_state("Password_state", password_state_transition)
+
+        # self.pg_mimic.run()
+
+    def handle(self):
+        # self.request is the TCP socket connected to the client
+        self.data = self.request.recv(self.INPUT_BUFF_SIZE)
+        # print("{} wrote:".format(self.client_address[0]))
+        logging.debug("{} wrote:".format(self.client_address[0]))
+        logging.debug(self.data)
+        # just send back the same data, but upper-cased
+        self.request.sendall(self.data.upper())
+
+def RunPGServer(host, port) :
+    # Create the server, binding to localhost on port PG_PORT
+    with socketserver.TCPServer((host, port), MyPGHandler) as server:
+        # Activate the server; this will keep running until you
+        # interrupt the program with Ctrl-C
+        logging.info("Starting PG mimic server")
+        server.serve_forever()        
+
+# *****************************************************
+# * Main Functionality
+# *****************************************************
 if __name__ == "__main__" :
-    pg_mimic = StateMachine()
-    pg_mimic.add_state("Startup", startup_transition)
-    pg_mimic.add_state("Password_state", password_state_transition)
-    pg_mimic.run()
+    PG_PORT = 5432
+    HOST, PORT = "localhost", PG_PORT
+    RunPGServer(HOST, PORT)
