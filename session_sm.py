@@ -19,7 +19,6 @@ logging.basicConfig(level=logging.DEBUG)
 class StateMachine:    
     def __init__(self):
         self.handlers = {}
-        self.start_state = None
         self.new_state = None
         self.end_states = []
 
@@ -30,11 +29,11 @@ class StateMachine:
             self.end_states.append(name)
 
     def set_start(self, name):
-        self.start_state = name.upper()
+        self.new_state = name.upper()
 
     def run(self, cargo):
         try:
-            handler = self.handlers[self.start_state]
+            handler = self.handlers[self.new_state.upper()]
         except:
             raise InitializationError("must call .set_start() before .run()")
 
@@ -59,6 +58,9 @@ import struct
 
 PARAMETER_STATUS_MSG_ID = bytes('S', "utf-8")
 AUTHENTICATION_REQUEST_MSG_ID = bytes('R', "utf-8")
+READY_FOR_QUERY_MSG_ID = bytes('Z', "utf-8")
+
+READY_FOR_QUERY_SERVER_STATUS_IDLE = bytes('I', "utf-8")
 
 def Startup_Msg_Deserialize(data) :
     """! Deserialize startup message
@@ -156,16 +158,63 @@ def R_Msg_AuthRequest_Serialize():
     Length = struct.calcsize(PAYLOAD_FORMAT)
 
     auth_req_OK = AUTHENTICATION_REQUEST_MSG_ID + \
-                  struct.pack(PAYLOAD_FORMAT, Length, 5, 0x12345678) # Authentication Request OK
-    # read_for_query = self.Z_Msg_ReadyForQuery_Serialize()
-    # rVal = auth_req_OK + param_status + read_for_query
+                  struct.pack(PAYLOAD_FORMAT, Length, 5, 0x12345678) # Authentication MD5 
+
     return auth_req_OK
+
+def R_Msg_AuthOk_Serialize():
+    """
+    AuthenticationOk (B)
+    Byte1('R')
+    Identifies the message as an authentication request.
+
+    Int32(8)
+    Length of message contents in bytes, including self.
+
+    Int32(0)
+    Specifies that the authentication was successful.
+    """
+    PAYLOAD_FORMAT = "!ii"    
+    
+    Length = struct.calcsize(PAYLOAD_FORMAT)
+
+    auth_req_OK = AUTHENTICATION_REQUEST_MSG_ID + \
+                  struct.pack(PAYLOAD_FORMAT, Length, 0) # Authentication Request OK
+
+def Z_Msg_ReadyForQuery_Serialize() :
+    """! Serialize a ready for query section.
+    @param N/A
+
+    @return packed bytes of ready for query (Z message)         
+
+    ReadyForQuery (Backend)
+        Byte1('Z')
+        Identifies the message type. ReadyForQuery is sent whenever the backend is ready for a new query cycle.
+
+        Int32(5)
+        Length of message contents in bytes, including self.
+
+        Byte1
+        Current backend transaction status indicator. Possible values are :
+        'I' if idle (not in a transaction block); 
+        'T' if in a transaction block; 
+        'E' if in a failed transaction block (queries will be rejected until block is ended).
+
+    """
+    HEADERFORMAT = "!i"         # Length 
+
+    Length = struct.calcsize(HEADERFORMAT) + len(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+
+    rVal = READY_FOR_QUERY_MSG_ID + struct.pack(HEADERFORMAT, Length) + READY_FOR_QUERY_SERVER_STATUS_IDLE
+
+    return rVal
 
 # *****************************************************
 # * Postgres Protocol Implementation
 # *****************************************************
 STARTUP_STATE = "Startup_state"
 PASSWORD_STATE = "Password_state"
+PARAMETER_STATUS_STATE = "Parameter_status_state"
 END_STATE = "End_state"
 
 def startup_transition(txt) :
@@ -183,23 +232,50 @@ def startup_transition(txt) :
     # TX Response
     return (new_state, send_msg)
 
-def password_state_transition() :
+def password_state_transition(txt) :
     logging.info("Enter password_state_transition")
-    # # RX Request
-    # txt = comm.rx()
-    # print(txt)
 
-    # # Deserialize Request
-    # Startup_Msg_Deserialize(txt)
+    # TODO : perform password authentication
 
-    # # Serialize Response
-    # send_msg = R_Msg_AuthRequest_Serialize()
+    # Deserialize Request
+    # TBD
 
-    # # TX Response
-    # comm.tx(send_msg)
+    # Serialize Response
+    send_msg = ""
 
-    # # Next state
-    # newState = "password_state"
+    # Next state
+    new_state = PARAMETER_STATUS_STATE
+
+    # TX Response
+    return (new_state, send_msg)
+
+def patameter_status_state_transition(txt) :
+    logging.info("Enter patameter_status_state_transition")
+
+    # Deserialize Request
+    #N/A
+
+    # Serialize Response    
+    send_msg = R_Msg_AuthOk_Serialize()
+
+    send_msg  = S_Msg_ParameterStatus_Serialize (str.encode('client_encoding'), str.encode('UTF8'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('DateStyle'), str.encode('ISO, MDY'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('integer_datetimes'), str.encode('on'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('IntervalStyle'), str.encode('postgres'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('is_superuser'), str.encode('on'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('server_encoding'), str.encode('UTF8'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('server_version'), str.encode('12.7'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('session_authorization'), str.encode('postgres'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('standard_conforming_strings'), str.encode('on'))
+
+    send_msg += Z_Msg_ReadyForQuery_Serialize()
+
+    # Next state
+    new_state = END_STATE
+
+    # TX Response
+    return (new_state, send_msg)
+
 
 # *****************************************************
 # * PG server logic
@@ -214,25 +290,30 @@ class MyPGHandler(socketserver.BaseRequestHandler):
     INPUT_BUFF_SIZE = 1024 * 1024
 
     def handle(self):
+        while True :
+            # RX Request
+            self.data = self.request.recv(self.INPUT_BUFF_SIZE)
 
-        # RX Request
-        self.data = self.request.recv(self.INPUT_BUFF_SIZE)
+            # Debug info
+            logging.debug("{} wrote:".format(self.client_address[0]))
+            logging.debug(self.data)
 
-        logging.debug("{} wrote:".format(self.client_address[0]))
-        logging.debug(self.data)
+            # Run State Machine
+            send_data = ""
+            # Run state machine as long as the state transitions have nothing to transmit
+            while send_data == "" :
+                send_data = self.server.pg_sm.run(self.data)
 
-        send_data = self.server.pg_sm.run(self.data)
-
-        # TX Response
-        self.request.sendall(send_data)
+            # TX Response
+            self.request.sendall(send_data)
 
 def CreatePGStateMachine() :
     pg_mimic = StateMachine()
     pg_mimic.add_state(STARTUP_STATE, startup_transition)
     pg_mimic.add_state(PASSWORD_STATE, password_state_transition)
+    pg_mimic.add_state(PARAMETER_STATUS_STATE, patameter_status_state_transition)
     pg_mimic.add_state(END_STATE, None, end_state=1)
     pg_mimic.set_start(STARTUP_STATE)
-    # pg_mimic.run()
 
     return pg_mimic
 

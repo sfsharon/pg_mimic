@@ -731,7 +731,7 @@ class Handler(SocketServer.BaseRequestHandler):
 
 if __name__ == "__main__":
     SocketServer.TCPServer.allow_reuse_address = True
-    server = SocketServer.TCPServer(("192.168.4.65", 6666), Handler)
+    server = SocketServer.TCPServer(("localhost", 5432), Handler)
     try:
         print "*** Waiting for connection"
         server.serve_forever()
