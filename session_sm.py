@@ -12,21 +12,19 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 16/10/2021 2030
-  1. Complete the initialization session protocol - Receive the password message ('p'), and answerwith 
-     a complete Status parameters to client.
+#  TODO 17/10/2021 1700
+  1. Initialization session protocol works. Move functional methods to different files.
+  2. Implment query sequence (demo data).
+  3. Implement SQream backend connection, and integrate query sequence.
 """
 class StateMachine:    
     def __init__(self):
         self.handlers = {}
         self.new_state = None
-        self.end_states = []
 
     def add_state(self, name, handler, end_state=0):
         name = name.upper()
         self.handlers[name] = handler
-        if end_state:
-            self.end_states.append(name)
 
     def set_start(self, name):
         self.new_state = name.upper()
@@ -37,15 +35,10 @@ class StateMachine:
         except:
             raise InitializationError("must call .set_start() before .run()")
 
-        if not self.end_states:
-            raise  InitializationError("at least one state must be an end_state")
-    
+   
         (self.new_state, cargo) = handler(cargo)
-        if self.new_state.upper() in self.end_states:
-            logging.info("reached ", self.new_state)
-            return 
-        else:
-            handler = self.handlers[self.new_state.upper()] 
+
+        handler = self.handlers[self.new_state.upper()] 
 
         return cargo
 
@@ -181,6 +174,8 @@ def R_Msg_AuthOk_Serialize():
     auth_req_OK = AUTHENTICATION_REQUEST_MSG_ID + \
                   struct.pack(PAYLOAD_FORMAT, Length, 0) # Authentication Request OK
 
+    return auth_req_OK
+
 def Z_Msg_ReadyForQuery_Serialize() :
     """! Serialize a ready for query section.
     @param N/A
@@ -258,7 +253,7 @@ def patameter_status_state_transition(txt) :
     # Serialize Response    
     send_msg = R_Msg_AuthOk_Serialize()
 
-    send_msg  = S_Msg_ParameterStatus_Serialize (str.encode('client_encoding'), str.encode('UTF8'))
+    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('client_encoding'), str.encode('UTF8'))
     send_msg += S_Msg_ParameterStatus_Serialize (str.encode('DateStyle'), str.encode('ISO, MDY'))
     send_msg += S_Msg_ParameterStatus_Serialize (str.encode('integer_datetimes'), str.encode('on'))
     send_msg += S_Msg_ParameterStatus_Serialize (str.encode('IntervalStyle'), str.encode('postgres'))
@@ -271,7 +266,7 @@ def patameter_status_state_transition(txt) :
     send_msg += Z_Msg_ReadyForQuery_Serialize()
 
     # Next state
-    new_state = END_STATE
+    new_state = STARTUP_STATE
 
     # TX Response
     return (new_state, send_msg)
@@ -321,6 +316,7 @@ def CreatePGStateMachine() :
 def RunPGServer(host, port) :
 
     # Create the server, binding to localhost on port PG_PORT
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((host, port), MyPGHandler) as server:
         server.pg_sm = CreatePGStateMachine()
 
