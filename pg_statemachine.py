@@ -46,6 +46,7 @@ from pg_serdes import *
 STARTUP_STATE = "Startup_state"
 PASSWORD_STATE = "Password_state"
 PARAMETER_STATUS_STATE = "Parameter_status_state"
+QUERY_STATE = "Query_state"
 END_STATE = "End_state"
 
 def startup_transition(txt) :
@@ -109,6 +110,28 @@ def patameter_status_state_transition(txt) :
     send_msg += Z_Msg_ReadyForQuery_Serialize()
 
     # Next state
+    new_state = QUERY_STATE
+
+    # TX Response
+    return (new_state, send_msg)
+
+def query_state_transition(txt) :
+    """! Performs query.
+    @param txt password string
+
+    @return parameter result of query
+    
+    """
+    logging.info("Enter query_state_transition")
+
+    # Deserialize Request
+    query = Q_Msg_Query_Deserialize(txt)
+
+    # Serialize Response    
+    # send_msg += Z_Msg_ReadyForQuery_Serialize()
+    send_msg = ""
+
+    # Next state
     new_state = STARTUP_STATE
 
     # TX Response
@@ -122,6 +145,7 @@ def CreatePGStateMachine() :
     pg_mimic.add_state(STARTUP_STATE, startup_transition)
     pg_mimic.add_state(PASSWORD_STATE, password_state_transition)
     pg_mimic.add_state(PARAMETER_STATUS_STATE, patameter_status_state_transition)
+    pg_mimic.add_state(QUERY_STATE, query_state_transition)
     pg_mimic.add_state(END_STATE, None, end_state=1)
     pg_mimic.set_start(STARTUP_STATE)
 

@@ -12,6 +12,7 @@ import struct
 PARAMETER_STATUS_MSG_ID = bytes('S', "utf-8")
 AUTHENTICATION_REQUEST_MSG_ID = bytes('R', "utf-8")
 READY_FOR_QUERY_MSG_ID = bytes('Z', "utf-8")
+QUERY_MSG_ID = bytes('Q', "utf-8")
 
 READY_FOR_QUERY_SERVER_STATUS_IDLE = bytes('I', "utf-8")
 
@@ -52,7 +53,7 @@ def Startup_Msg_Deserialize(data) :
     """
     HEADERFORMAT = "!ihh"     # Length / Protocol major ver / Protocol minor ver  
 
-    # Disregard user and password parameter/values
+    # Disregard user parameter/value
 
     msglen, protocol_major_ver, protocol_minor_ver = struct.unpack(HEADERFORMAT, data[0:8])
 
@@ -64,7 +65,7 @@ def Q_Msg_Query_Deserialize(data) :
 
     @return query string
 
-    Query (F)
+    Query (Frontend)
         Byte1('Q')
         Identifies the message as a simple query.
 
@@ -74,15 +75,15 @@ def Q_Msg_Query_Deserialize(data) :
         String
         The query string itself.        
     """
-    # HEADERFORMAT = "!ihh"     # Length / Protocol major ver / Protocol minor ver  
+    HEADERFORMAT = "!ci"     # MsgID / Length
+    header_length = struct.calcsize(HEADERFORMAT)
+    msg_id, msg_len = struct.unpack(HEADERFORMAT, data[0:header_length])
+    assert msg_id == QUERY_MSG_ID
+    query = data[header_length:]
 
-    # # Disregard user and password parameter/values
+    logging.info("*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(query))
 
-    # msglen, protocol_major_ver, protocol_minor_ver = struct.unpack(HEADERFORMAT, data[0:8])
-
-    # logging.info("msglen : %d, protocol major : %d, protocol minor : %d", msglen, protocol_major_ver, protocol_minor_ver)
-
-
+    return query
 
 def S_Msg_ParameterStatus_Serialize(param_name, param_value) :
     """! Serialize a parameter status.
