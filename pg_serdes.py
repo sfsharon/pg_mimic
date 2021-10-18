@@ -58,6 +58,32 @@ def Startup_Msg_Deserialize(data) :
 
     logging.info("msglen : %d, protocol major : %d, protocol minor : %d", msglen, protocol_major_ver, protocol_minor_ver)
 
+def Q_Msg_Query_Deserialize(data) :
+    """! Deserialize simple query message
+    @param data bytes array of the simple query
+
+    @return query string
+
+    Query (F)
+        Byte1('Q')
+        Identifies the message as a simple query.
+
+        Int32
+        Length of message contents in bytes, including self.
+
+        String
+        The query string itself.        
+    """
+    # HEADERFORMAT = "!ihh"     # Length / Protocol major ver / Protocol minor ver  
+
+    # # Disregard user and password parameter/values
+
+    # msglen, protocol_major_ver, protocol_minor_ver = struct.unpack(HEADERFORMAT, data[0:8])
+
+    # logging.info("msglen : %d, protocol major : %d, protocol minor : %d", msglen, protocol_major_ver, protocol_minor_ver)
+
+
+
 def S_Msg_ParameterStatus_Serialize(param_name, param_value) :
     """! Serialize a parameter status.
     @param param_name   string

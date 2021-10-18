@@ -81,6 +81,13 @@ def password_state_transition(txt) :
     return (new_state, send_msg)
 
 def patameter_status_state_transition(txt) :
+    """! Builds parameter status message during intialization phase.
+         Does not take into account the password (the txt parameter)
+    @param txt password string
+
+    @return parameter status message
+    
+    """
     logging.info("Enter patameter_status_state_transition")
 
     # Deserialize Request
