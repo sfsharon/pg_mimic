@@ -12,10 +12,9 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 18/10/2021 0730
-  1. Implment query sequence (currently only for demo data).
-     Finish implementing Q_Msg_Query_Deserialize, and its corresponding transition state
-  2. Implement SQream backend connection, and integrate query sequence.
+#  TODO 18/10/2021 2130
+  1. Implement SQream backend connection, and integrate query sequence.
+  2. Integrate with PowerBI
 """
 
 

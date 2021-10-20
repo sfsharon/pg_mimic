@@ -107,7 +107,7 @@ def patameter_status_state_transition(txt) :
     send_msg += S_Msg_ParameterStatus_Serialize (str.encode('session_authorization'), str.encode('postgres'))
     send_msg += S_Msg_ParameterStatus_Serialize (str.encode('standard_conforming_strings'), str.encode('on'))
 
-    send_msg += Z_Msg_ReadyForQuery_Serialize()
+    send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
 
     # Next state
     new_state = QUERY_STATE
@@ -129,10 +129,15 @@ def query_state_transition(txt) :
 
     # Serialize Response    
     # send_msg += Z_Msg_ReadyForQuery_Serialize()
-    send_msg = ""
+    send_msg = T_Msg_RowDescription_Serialize(['xint']) +    \
+               D_Msg_DataRow_Serialize([42]) +               \
+               D_Msg_DataRow_Serialize(['10']) +               \
+               C_Msg_CommandComplete_Serialize('SELECT 3') + \
+               Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
 
     # Next state
-    new_state = STARTUP_STATE
+    # TODO - Fix Endless loop
+    new_state = QUERY_STATE
 
     # TX Response
     return (new_state, send_msg)
