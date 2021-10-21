@@ -10,17 +10,15 @@ logging.basicConfig(level=logging.DEBUG)
 import pysqream
 
 def get_db(host, port, database, username, password) :
-    logging.info("*** get_db : Connecting to SQream server {}:{}".format(HOST, PORT))
-    con = pysqream.connect( host = HOST, port = PORT, 
-                            database = DATABASE, 
-                            username = USERNAME, password = PASSWORD)
+    logging.info("*** get_db : Connecting to SQream server {}:{}".format(host, port))
+    con = pysqream.connect( host, port,database, username, password)
     return con
 
 def execute_query (connection, query) :
-    cur = con.cursor()
+    cur = connection.cursor()
 
-    logging.info("*** Executing query {}".format(QUERY))
-    cur.execute(QUERY)
+    logging.info("*** Executing query {}".format(query))
+    cur.execute(query.decode("utf-8"))
     result = cur.fetchall()
     return result
 

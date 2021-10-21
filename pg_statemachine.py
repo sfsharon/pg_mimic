@@ -15,6 +15,7 @@ class StateMachine:
     def __init__(self):
         self.handlers = {}
         self.new_state = None
+        self.backend_db_con = None
 
     def add_state(self, name, handler, end_state=0):
         name = name.upper()
@@ -29,9 +30,10 @@ class StateMachine:
         except:
             raise InitializationError("must call .set_start() before .run()")
 
-   
-        (self.new_state, cargo) = handler(cargo)
+        # Run state logic
+        (self.new_state, cargo) = handler(cargo, self.backend_db_con)
 
+        # Update next state logic handler
         handler = self.handlers[self.new_state.upper()] 
 
         return cargo
@@ -39,6 +41,7 @@ class StateMachine:
 # ------------------------------------------------------------------------------------
 
 from pg_serdes import *
+from sqream_backend import *
 
 # *****************************************************
 # * Postgres Protocol Implementation
@@ -49,7 +52,7 @@ PARAMETER_STATUS_STATE = "Parameter_status_state"
 QUERY_STATE = "Query_state"
 END_STATE = "End_state"
 
-def startup_transition(txt) :
+def startup_transition(txt, backend_db_con) :
     logging.info("Enter startup_transition")
 
     # Deserialize Request
@@ -64,7 +67,7 @@ def startup_transition(txt) :
     # TX Response
     return (new_state, send_msg)
 
-def password_state_transition(txt) :
+def password_state_transition(txt, backend_db_con) :
     logging.info("Enter password_state_transition")
 
     # TODO : perform password authentication
@@ -81,7 +84,7 @@ def password_state_transition(txt) :
     # TX Response
     return (new_state, send_msg)
 
-def patameter_status_state_transition(txt) :
+def patameter_status_state_transition(txt, backend_db_con) :
     """! Builds parameter status message during intialization phase.
          Does not take into account the password (the txt parameter)
     @param txt password string
@@ -115,7 +118,7 @@ def patameter_status_state_transition(txt) :
     # TX Response
     return (new_state, send_msg)
 
-def query_state_transition(txt) :
+def query_state_transition(txt, backend_db_con) :
     """! Performs query.
     @param txt password string
 
@@ -127,13 +130,18 @@ def query_state_transition(txt) :
     # Deserialize Request
     query = Q_Msg_Query_Deserialize(txt)
 
+    # Query backend database
+    result = execute_query(backend_db_con, query)
+
     # Serialize Response    
-    # send_msg += Z_Msg_ReadyForQuery_Serialize()
-    send_msg = T_Msg_RowDescription_Serialize(['xint']) +    \
-               D_Msg_DataRow_Serialize([42]) +               \
-               D_Msg_DataRow_Serialize(['10']) +               \
-               C_Msg_CommandComplete_Serialize('SELECT 3') + \
-               Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+    send_msg = T_Msg_RowDescription_Serialize(['xint']) 
+
+    for row_val in result :
+        send_msg += D_Msg_DataRow_Serialize(row_val) 
+
+
+    send_msg += C_Msg_CommandComplete_Serialize('SELECT 3') 
+    send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
 
     # Next state
     # TODO - Fix Endless loop
@@ -143,6 +151,12 @@ def query_state_transition(txt) :
     return (new_state, send_msg)
 
 # ---------------------------------------------------------------------------------------------
+HOST = "192.168.4.64"
+PORT = 5000
+DATABASE = "master"
+CLUSTERED = False
+USERNAME = "sqream"
+PASSWORD = "sqream"
 
 # Put it all together
 def CreatePGStateMachine() :
@@ -153,5 +167,9 @@ def CreatePGStateMachine() :
     pg_mimic.add_state(QUERY_STATE, query_state_transition)
     pg_mimic.add_state(END_STATE, None, end_state=1)
     pg_mimic.set_start(STARTUP_STATE)
+
+    pg_mimic.backend_db_con = get_db(   host = HOST, port = PORT, 
+                                        database = DATABASE, 
+                                        username = USERNAME, password = PASSWORD)
 
     return pg_mimic
