@@ -19,6 +19,10 @@ def execute_query (connection, query) :
 
     logging.info("*** Executing query {}".format(query))
     cur.execute(query.decode("utf-8"))
+
+    logging.info("*** get_db : Column names {}".format(str(cur.col_names)))
+    logging.info("*** get_db : Column types {}".format(str(cur.description)))
+
     result = cur.fetchall()
     return result
 
@@ -29,7 +33,7 @@ if __name__ == "__main__" :
     CLUSTERED = False
     USERNAME = "sqream"
     PASSWORD = "sqream"
-    QUERY = "select * from test1"
+    QUERY = b"select * from test1"
 
     con = get_db(host = HOST, port = PORT, 
                  database = DATABASE, 

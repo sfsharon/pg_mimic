@@ -68,18 +68,26 @@ def startup_transition(txt, backend_db_con) :
     return (new_state, send_msg)
 
 def password_state_transition(txt, backend_db_con) :
-    logging.info("Enter password_state_transition")
+    # Verify this is password message
+    if not is_passwd_msg(txt) :
+        logging.info("password_state_transition: Did not get password message. Returning to Startup")
+        # Serialize Response
+        send_msg = ""
+        # Next state
+        new_state = STARTUP_STATE
+    else :
+        logging.info("Enter password_state_transition")
 
-    # TODO : perform password authentication
+        # TODO : perform password authentication
 
-    # Deserialize Request
-    # TBD
+        # Deserialize Request
+        # TBD
 
-    # Serialize Response
-    send_msg = ""
+        # Serialize Response
+        send_msg = ""
 
-    # Next state
-    new_state = PARAMETER_STATUS_STATE
+        # Next state
+        new_state = PARAMETER_STATUS_STATE
 
     # TX Response
     return (new_state, send_msg)
@@ -168,8 +176,8 @@ def CreatePGStateMachine() :
     pg_mimic.add_state(END_STATE, None, end_state=1)
     pg_mimic.set_start(STARTUP_STATE)
 
-    pg_mimic.backend_db_con = get_db(   host = HOST, port = PORT, 
-                                        database = DATABASE, 
-                                        username = USERNAME, password = PASSWORD)
+    # pg_mimic.backend_db_con = get_db(   host = HOST, port = PORT, 
+    #                                     database = DATABASE, 
+    #                                     username = USERNAME, password = PASSWORD)
 
     return pg_mimic

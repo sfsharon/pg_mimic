@@ -17,6 +17,7 @@ QUERY_MSG_ID = bytes('Q', "utf-8")
 CMD_COMPLETE_MSG_ID = bytes('C', "utf-8")
 DATA_COLS_MSG_ID = bytes('D', "utf-8")
 ROW_DESC_MSG_ID = bytes('T', "utf-8")
+PASSWORD_MSG_ID = bytes('p', "utf-8")
 
 # Server state constants
 READY_FOR_QUERY_SERVER_STATUS_IDLE = bytes('I', "utf-8")
@@ -47,6 +48,21 @@ def utility_int_to_text(val) :
         char_digit = struct.pack("!c",  bytes(str(digit), "utf-8"))
         rVal += char_digit
     rVal = rVal[::-1]           # Reverse the string
+    return rVal
+
+def is_passwd_msg(data):
+    """
+    Verify message is a PASSWORD message
+    """
+    rVal = False
+
+    HEADERFORMAT = "!ci"     # MsgID / Length
+    header_length = struct.calcsize(HEADERFORMAT)
+
+    if len(data) >= header_length : 
+        msg_id, msg_len = struct.unpack(HEADERFORMAT, data[0:header_length])
+        if msg_id == PASSWORD_MSG_ID: rVal = True
+
     return rVal
 
 # ***********************************************

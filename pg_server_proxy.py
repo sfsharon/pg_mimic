@@ -36,6 +36,10 @@ class MyPGHandler(socketserver.BaseRequestHandler):
             # RX Request
             self.data = self.request.recv(self.INPUT_BUFF_SIZE)
 
+            if len(self.data) == 0 :
+                logging.error("*** pg_server_proxy : Received zero length message. Exiting")
+                break
+
             # Debug info
             logging.debug("{} wrote:".format(self.client_address[0]))
             logging.debug(self.data)
