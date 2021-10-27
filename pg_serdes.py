@@ -12,15 +12,23 @@ import struct
 # ***********************************************
 # * Constants
 # ***********************************************
-# Message ID constants
+# Deserialize Message IDs 
+QUERY_MSG_ID = bytes('Q', "utf-8")
+PARSE_MSG_ID = bytes('P', "utf-8")
+PASSWORD_MSG_ID = bytes('p', "utf-8")
+BIND_MSG_ID = bytes('B', "utf-8")
+DESCRIBE_MSG_ID = bytes('D', "utf-8")
+EXECUTE_MSG_ID = bytes('E', "utf-8")
+SYNC_MSG_ID = bytes('S', "utf-8")
+
+# Serialize Message IDs 
 PARAMETER_STATUS_MSG_ID = bytes('S', "utf-8")
 AUTHENTICATION_REQUEST_MSG_ID = bytes('R', "utf-8")
 READY_FOR_QUERY_MSG_ID = bytes('Z', "utf-8")
-QUERY_MSG_ID = bytes('Q', "utf-8")
 CMD_COMPLETE_MSG_ID = bytes('C', "utf-8")
 DATA_COLS_MSG_ID = bytes('D', "utf-8")
 ROW_DESC_MSG_ID = bytes('T', "utf-8")
-PASSWORD_MSG_ID = bytes('p', "utf-8")
+
 
 # Server state constants
 READY_FOR_QUERY_SERVER_STATUS_IDLE = bytes('I', "utf-8")
@@ -75,7 +83,7 @@ def tokenization(data) :
     This is a first step in parsing the incoming PG message.
     Next step would be to build a sentence with a specific meaning out 
     """
-    msgs = []
+    tokenized_msgs = []
 
     # Example input
     # PBDES = b'P\x00\x00\x00H\x00select character_set_name from INFORMATION_SCHEMA.character_sets\x00\x00\x00B\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01D\x00\x00\x00\x06P\x00E\x00\x00\x00\t\x00\x00\x00\x00\x00S\x00\x00\x00\x04'
@@ -88,13 +96,37 @@ def tokenization(data) :
         header_len = struct.calcsize(HEADERFORMAT)
         msg_id, msg_len = struct.unpack(HEADERFORMAT, data[0:header_len])
         msg_data = data[header_len:msg_len + 1]
-        msgs.append((msg_id, msg_data))
+        tokenized_msgs.append((msg_id, msg_data))
 
         # Iterate to the next message
         data = data[msg_len + 1 :]
 
-    return msgs
+    return tokenized_msgs
 
+# WIP
+def parse(tokenized_msgs) :
+    """
+    Parse tokenized messages into Postgres messages
+    """
+    parsed_msgs = []
+
+    for msg in tokenized_msgs :
+        msg_id = msg[0]
+
+        if   msg_id == QUERY_MSG_ID :
+            pass
+        elif msg_id == PASSWORD_MSG_ID :
+            pass        
+        elif msg_id == PARSE_MSG_ID :
+            pass
+        elif msg_id == BIND_MSG_ID :
+            pass
+        elif msg_id == DESCRIBE_MSG_ID :
+            pass
+        elif msg_id == EXECUTE_MSG_ID :
+            pass
+        elif msg_id == SYNC_MSG_ID :
+            pass                
 
 # ***********************************************
 # * Serialize / Deserialize functions

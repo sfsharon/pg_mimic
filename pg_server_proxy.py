@@ -12,9 +12,9 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 18/10/2021 2130
-  1. Implement SQream backend connection, and integrate query sequence.
-  2. Integrate with PowerBI
+#  TODO 27/10/2021 2130
+  1. Integrate with PowerBI :
+    Complete function parse(tokenized_msgs) :
 """
 
 
