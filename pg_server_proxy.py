@@ -65,6 +65,7 @@ def RunPGServer(host, port) :
         logging.info("Starting PG proxy server")
         server.serve_forever()        
 
+
 # *****************************************************
 # * Main Functionality
 # *****************************************************
@@ -72,3 +73,6 @@ if __name__ == "__main__" :
     PG_PORT = 5432
     HOST, PORT = "localhost", PG_PORT
     RunPGServer(HOST, PORT)
+
+    # Test tokeniaztion
+    # print(tokenization(''))

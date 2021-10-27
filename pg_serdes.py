@@ -9,6 +9,9 @@ logging.basicConfig(level=logging.DEBUG)
 
 import struct
 
+# ***********************************************
+# * Constants
+# ***********************************************
 # Message ID constants
 PARAMETER_STATUS_MSG_ID = bytes('S', "utf-8")
 AUTHENTICATION_REQUEST_MSG_ID = bytes('R', "utf-8")
@@ -64,6 +67,34 @@ def is_passwd_msg(data):
         if msg_id == PASSWORD_MSG_ID: rVal = True
 
     return rVal
+
+def tokenization(data) :
+    """
+    Tokenize a stream of bytes into a list of tuples with two values :
+    [(Header Msg ID size of byte, Msg payload), (Msg ID, Payload), ...].
+    This is a first step in parsing the incoming PG message.
+    Next step would be to build a sentence with a specific meaning out 
+    """
+    msgs = []
+
+    # Example input
+    # PBDES = b'P\x00\x00\x00H\x00select character_set_name from INFORMATION_SCHEMA.character_sets\x00\x00\x00B\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01D\x00\x00\x00\x06P\x00E\x00\x00\x00\t\x00\x00\x00\x00\x00S\x00\x00\x00\x04'
+    # data = PBDES
+
+    while len(data) > 0 :
+
+        # Get message at the start of the data frame
+        HEADERFORMAT = "!ci"     # MsgID / Length
+        header_len = struct.calcsize(HEADERFORMAT)
+        msg_id, msg_len = struct.unpack(HEADERFORMAT, data[0:header_len])
+        msg_data = data[header_len:msg_len + 1]
+        msgs.append((msg_id, msg_data))
+
+        # Iterate to the next message
+        data = data[msg_len + 1 :]
+
+    return msgs
+
 
 # ***********************************************
 # * Serialize / Deserialize functions
@@ -137,6 +168,47 @@ def Q_Msg_Query_Deserialize(data) :
     logging.info("*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(query))
 
     return query
+# ---------------------------
+# WIP
+# ---------------------------
+def P_Msg_Query_Deserialize(data) :
+    """! Deserialize simple query message
+    @param data bytes array of the simple query
+
+    @return query string
+
+    Parse (Frontend)
+    Byte1('P')
+    Identifies the message as a Parse command.
+
+    Int32
+    Length of message contents in bytes, including self.
+
+    String
+    The name of the destination prepared statement (an empty string selects the unnamed prepared statement).
+
+    String
+    The query string to be parsed.
+
+    Int16
+    The number of parameter data types specified (can be zero). Note that this is not an indication of the number of parameters that might appear in the query string, only the number that the frontend wants to prespecify types for.
+
+    Then, for each parameter, there is the following:
+
+    Int32
+    Specifies the object ID of the parameter data type. Placing a zero here is equivalent to leaving the type unspecified.       
+    """
+    # HEADERFORMAT = "!ci"     # MsgID / Length
+    # header_length = struct.calcsize(HEADERFORMAT)
+    # msg_id, msg_len = struct.unpack(HEADERFORMAT, data[0:header_length])
+    # assert msg_id == QUERY_MSG_ID
+    # query = data[header_length:]
+
+    # logging.info("*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(query))
+
+    # return query
+
+
 
 def S_Msg_ParameterStatus_Serialize(param_name, param_value) :
     """! Serialize a parameter status.
