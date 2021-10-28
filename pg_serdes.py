@@ -20,7 +20,6 @@ BIND_MSG_ID = bytes('B', "utf-8")
 DESCRIBE_MSG_ID = bytes('D', "utf-8")
 EXECUTE_MSG_ID = bytes('E', "utf-8")
 SYNC_MSG_ID = bytes('S', "utf-8")
-
 # Serialize Message IDs 
 PARAMETER_STATUS_MSG_ID = bytes('S', "utf-8")
 AUTHENTICATION_REQUEST_MSG_ID = bytes('R', "utf-8")
@@ -29,17 +28,21 @@ CMD_COMPLETE_MSG_ID = bytes('C', "utf-8")
 DATA_COLS_MSG_ID = bytes('D', "utf-8")
 ROW_DESC_MSG_ID = bytes('T', "utf-8")
 
-
-# Server state constants
+# Server state
 READY_FOR_QUERY_SERVER_STATUS_IDLE = bytes('I', "utf-8")
 
-# Row description constants
+# Row description 
 INT_TYPE_OID = 23
 INT_TYPE_COLUMN_LENGTH = 4
 TYPE_FORMAT_TEXT = 0
 TYPE_FORMAT_BINARY = 1
 
-# Misc constants
+# Message attributes
+PARSE_MSG__STATEMENT = "statement"
+PARSE_MSG__QUERY     = "query"
+PARSE_MSG__PARAMETER = "parameter"
+
+# Misc
 NULL_TERMINATOR = b'\x00'
 
 # ***********************************************
@@ -79,20 +82,16 @@ def is_passwd_msg(data):
 def tokenization(data) :
     """
     Tokenize a stream of bytes into a list of tuples with two values :
-    [(Header Msg ID size of byte, Msg payload), (Msg ID, Payload), ...].
+    [(Header Msg ID size of byte, Msg payload), 
+     (Msg ID_2, Payload_2), ...].
     This is a first step in parsing the incoming PG message.
-    Next step would be to build a sentence with a specific meaning out 
+    Next step would be to build a sentence with a specific meaning out of a series of words
     """
     tokenized_msgs = []
 
-    # Example input
-    # PBDES = b'P\x00\x00\x00H\x00select character_set_name from INFORMATION_SCHEMA.character_sets\x00\x00\x00B\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01D\x00\x00\x00\x06P\x00E\x00\x00\x00\t\x00\x00\x00\x00\x00S\x00\x00\x00\x04'
-    # data = PBDES
-
     while len(data) > 0 :
-
-        # Get message at the start of the data frame
-        HEADERFORMAT = "!ci"     # MsgID / Length
+        # Get message at the start of the data frame - MsgID / Length
+        HEADERFORMAT = "!ci"     
         header_len = struct.calcsize(HEADERFORMAT)
         msg_id, msg_len = struct.unpack(HEADERFORMAT, data[0:header_len])
         msg_data = data[header_len:msg_len + 1]
@@ -112,21 +111,25 @@ def parse(tokenized_msgs) :
 
     for msg in tokenized_msgs :
         msg_id = msg[0]
-
         if   msg_id == QUERY_MSG_ID :
-            pass
+            parsed_msgs.append((QUERY_MSG_ID, Q_Msg_Query_Deserialize(msg)))
         elif msg_id == PASSWORD_MSG_ID :
-            pass        
+            parsed_msgs.append((PASSWORD_MSG_ID,  'N/A'))
         elif msg_id == PARSE_MSG_ID :
-            pass
+            parsed_msgs.append((PARSE_MSG_ID, P_Msg_Query_Deserialize(msg)))
         elif msg_id == BIND_MSG_ID :
-            pass
+            parsed_msgs.append((BIND_MSG_ID, B_Msg_Query_Deserialize(msg)))
         elif msg_id == DESCRIBE_MSG_ID :
-            pass
+            parsed_msgs.append((DESCRIBE_MSG_ID, D_Msg_Query_Deserialize(msg)))
         elif msg_id == EXECUTE_MSG_ID :
-            pass
+            parsed_msgs.append((EXECUTE_MSG_ID, E_Msg_Query_Deserialize(msg)))
         elif msg_id == SYNC_MSG_ID :
-            pass                
+            parsed_msgs.append((SYNC_MSG_ID, S_Msg_Query_Deserialize(msg)))
+        else :
+            assert(0, f"Unrecognized message id : {msg_id}")
+            
+    return parsed_msgs
+
 
 # ***********************************************
 # * Serialize / Deserialize functions
@@ -170,7 +173,6 @@ def Startup_Msg_Deserialize(data) :
     HEADERFORMAT = "!ihh"     # Length / Protocol major ver / Protocol minor ver  
 
     # Disregard user parameter/value
-
     msglen, protocol_major_ver, protocol_minor_ver = struct.unpack(HEADERFORMAT, data[0:8])
 
     logging.info("msglen : %d, protocol major : %d, protocol minor : %d", msglen, protocol_major_ver, protocol_minor_ver)
@@ -182,20 +184,16 @@ def Q_Msg_Query_Deserialize(data) :
     @return query string
 
     Query (Frontend)
-        Byte1('Q')
-        Identifies the message as a simple query.
+        # Byte1('Q')
+        # Identifies the message as a simple query.
 
-        Int32
-        Length of message contents in bytes, including self.
+        # Int32
+        # Length of message contents in bytes, including self.
 
         String
         The query string itself.        
     """
-    HEADERFORMAT = "!ci"     # MsgID / Length
-    header_length = struct.calcsize(HEADERFORMAT)
-    msg_id, msg_len = struct.unpack(HEADERFORMAT, data[0:header_length])
-    assert msg_id == QUERY_MSG_ID
-    query = data[header_length:]
+    query = data
 
     logging.info("*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(query))
 
@@ -204,17 +202,17 @@ def Q_Msg_Query_Deserialize(data) :
 # WIP
 # ---------------------------
 def P_Msg_Query_Deserialize(data) :
-    """! Deserialize simple query message
+    """! Deserialize Parse message
     @param data bytes array of the simple query
 
-    @return query string
+    @return Parse 
 
     Parse (Frontend)
-    Byte1('P')
-    Identifies the message as a Parse command.
+    # Byte1('P')
+    # Identifies the message as a Parse command.
 
-    Int32
-    Length of message contents in bytes, including self.
+    # Int32
+    # Length of message contents in bytes, including self.
 
     String
     The name of the destination prepared statement (an empty string selects the unnamed prepared statement).
@@ -230,15 +228,26 @@ def P_Msg_Query_Deserialize(data) :
     Int32
     Specifies the object ID of the parameter data type. Placing a zero here is equivalent to leaving the type unspecified.       
     """
-    # HEADERFORMAT = "!ci"     # MsgID / Length
-    # header_length = struct.calcsize(HEADERFORMAT)
-    # msg_id, msg_len = struct.unpack(HEADERFORMAT, data[0:header_length])
-    # assert msg_id == QUERY_MSG_ID
-    # query = data[header_length:]
+    msg_id = data[0]
+    payload = data[1]
 
-    # logging.info("*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(query))
+    parsed_msg = {}
 
-    # return query
+    assert (msg_id == PARSE_MSG_ID, f"Received {msg_id} unexpected message ID")
+
+    statement = payload[ : payload.find(NULL_TERMINATOR) + 1]
+    parsed_msg[PARSE_MSG__STATEMENT] = statement
+    payload = payload[len(statement) : ]
+
+    query = payload[ : payload.find(NULL_TERMINATOR) + 1]
+    parsed_msg[PARSE_MSG__QUERY] = query
+    payload = payload[len(query) : ]
+
+    PAYLOAD_STRUCT = "!h"     
+    parameter = struct.unpack(PAYLOAD_STRUCT, payload[0:struct.calcsize(PAYLOAD_STRUCT)])
+    parsed_msg[PARSE_MSG__PARAMETER] = parameter[0]
+
+    return parsed_msg
 
 
 
@@ -509,3 +518,21 @@ def Z_Msg_ReadyForQuery_Serialize(server_status) :
     rVal = READY_FOR_QUERY_MSG_ID + struct.pack(HEADERFORMAT, Length) + READY_FOR_QUERY_SERVER_STATUS_IDLE
 
     return rVal
+
+# *****************************************************
+# * Unit Testing
+# *****************************************************
+def UT() :
+    # Example input
+    PBDES_Msg = b'P\x00\x00\x00H\x00select character_set_name from INFORMATION_SCHEMA.character_sets\x00\x00\x00B\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01D\x00\x00\x00\x06P\x00E\x00\x00\x00\t\x00\x00\x00\x00\x00S\x00\x00\x00\x04'
+
+    # Tokenize input bytes stream
+    tokens = tokenization(PBDES_Msg)
+
+    # Parse messages to their attributes
+    parsed_msgs = parse(tokens)
+
+    print(parsed_msgs)
+
+if __name__ == "__main__" :
+    UT()
