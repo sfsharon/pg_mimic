@@ -49,6 +49,10 @@ BIND_MSG__PARAM_VALUES      = "param_values"
 BIND_MSG__RESULT_FORMATS    = "result_formats"
 BIND_MSG__FORMAT_TYPES      = "format_type"
 
+DESCRIBE_MSG__PARAM_FORMATS = "description"
+DESCRIBE_MSG__PORTAL        = "portal"
+    
+
 # Misc
 NULL_TERMINATOR = b'\x00'
 
@@ -308,6 +312,39 @@ def B_Msg_Query_Deserialize(data) :
     parsed_msg[BIND_MSG__PARAM_VALUES]   = param_values
     parsed_msg[BIND_MSG__RESULT_FORMATS] = result_formats
     parsed_msg[BIND_MSG__FORMAT_TYPES]   = format_type
+
+    return parsed_msg
+
+
+def D_Msg_Query_Deserialize(data) :
+    """! Deserialize Describe message
+    @param data bytes array 
+
+    @return  
+
+    Describe (Frontend)
+        Byte1
+        'S' to describe a prepared statement; or 'P' to describe a portal.
+
+        String
+        The name of the prepared statement or portal to describe (an empty string selects the unnamed prepared statement or portal).
+
+
+    """
+    msg_id = data[0]
+    payload = data[1]
+
+    parsed_msg = {}
+
+    assert (msg_id == DESCRIBE_MSG_ID, f"Received '{msg_id}' unexpected message ID")
+
+    PAYLOAD_STRUCT = "!c"     
+    description = struct.unpack(PAYLOAD_STRUCT, payload[0:struct.calcsize(PAYLOAD_STRUCT)])
+    parsed_msg[DESCRIBE_MSG__PARAM_FORMATS]  = description
+    payload = payload[struct.calcsize(PAYLOAD_STRUCT) : ]
+
+    portal = payload[ : payload.find(NULL_TERMINATOR) + 1]
+    parsed_msg[DESCRIBE_MSG__PORTAL] = portal
 
     return parsed_msg
 
