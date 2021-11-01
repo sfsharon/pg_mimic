@@ -38,20 +38,24 @@ class MyPGHandler(socketserver.BaseRequestHandler):
 
             if len(self.data) == 0 :
                 logging.error("*** pg_server_proxy : Received zero length message. Exiting")
+                force_initial_state(self.server.pg_sm)
                 break
 
-            # Debug info
-            logging.debug("{} wrote:".format(self.client_address[0]))
-            logging.debug(self.data)
+            # Tokenize input bytes stream to discrete messages
+            is_expecting_startup_msg = is_initial_state(self.server.pg_sm)
+            tokens = tokenization(self.data, is_expecting_startup_msg)
 
-            # Run State Machine
-            send_data = ""
+            # Parse messages to their attributes
+            parsed_msgs = parse(tokens, is_expecting_startup_msg)
+
+
             # Run state machine as long as the state transitions have nothing to transmit
-            while send_data == "" :
-                send_data = self.server.pg_sm.run(self.data)
+            send_msg = ""
+            while send_msg == "" :
+                send_msg, parsed_msgs = self.server.pg_sm.run(parsed_msgs)
 
             # TX Response
-            self.request.sendall(send_data)
+            self.request.sendall(send_msg)
 
 
 def RunPGServer(host, port) :

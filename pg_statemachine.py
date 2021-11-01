@@ -22,21 +22,31 @@ class StateMachine:
         self.handlers[name] = handler
 
     def set_start(self, name):
-        self.new_state = name.upper()
+        self.new_state = name
 
-    def run(self, cargo):
+    def run(self, parsed_msgs):
         try:
-            handler = self.handlers[self.new_state.upper()]
+            handler = self.handlers[self.new_state]
         except:
             raise InitializationError("must call .set_start() before .run()")
 
+        #Process the first message in parsed messages list
+        curr_msg = {}
+        if len(parsed_msgs) > 0 :
+            curr_msg = parsed_msgs[0]
+        else :
+            logging.info(f"Executing state {self.new_state} without input")
+
         # Run state logic
-        (self.new_state, cargo) = handler(cargo, self.backend_db_con)
+        (self.new_state, send_msg) = handler(curr_msg, self.backend_db_con)
+
+        # Remove digested message from parsed messages list
+        parsed_msgs = parsed_msgs[1:]
 
         # Update next state logic handler
-        handler = self.handlers[self.new_state.upper()] 
+        handler = self.handlers[self.new_state] 
 
-        return cargo
+        return send_msg, parsed_msgs
 
 # ------------------------------------------------------------------------------------
 
@@ -46,17 +56,15 @@ from sqream_backend import *
 # *****************************************************
 # * Postgres Protocol Implementation
 # *****************************************************
-STARTUP_STATE = "Startup_state"
-PASSWORD_STATE = "Password_state"
-PARAMETER_STATUS_STATE = "Parameter_status_state"
-QUERY_STATE = "Query_state"
-END_STATE = "End_state"
+STARTUP_STATE = "STARTUP_STATE"
+PASSWORD_STATE = "PASSWORD_STATE"
+PARAMETER_STATUS_STATE = "PARAMETER_STATUS_STATE"
+QUERY_STATE = "QUERY_STATE"
+END_STATE = "END_STATE"
 
 def startup_transition(txt, backend_db_con) :
     logging.info("Enter startup_transition")
 
-    # Deserialize Request
-    Startup_Msg_Deserialize(txt)
 
     # Serialize Response
     send_msg = R_Msg_AuthRequest_Serialize()
@@ -67,9 +75,9 @@ def startup_transition(txt, backend_db_con) :
     # TX Response
     return (new_state, send_msg)
 
-def password_state_transition(txt, backend_db_con) :
+def password_state_transition(msg, backend_db_con) :
     # Verify this is password message
-    if not is_passwd_msg(txt) :
+    if not is_passwd_msg(msg) :
         logging.info("password_state_transition: Did not get password message. Returning to Startup")
         # Serialize Response
         send_msg = ""
@@ -92,10 +100,10 @@ def password_state_transition(txt, backend_db_con) :
     # TX Response
     return (new_state, send_msg)
 
-def patameter_status_state_transition(txt, backend_db_con) :
+def patameter_status_state_transition(msg, backend_db_con) :
     """! Builds parameter status message during intialization phase.
-         Does not take into account the password (the txt parameter)
-    @param txt password string
+         Does not take into account the password (the msg parameter)
+    @param msg password 
 
     @return parameter status message
     
@@ -126,17 +134,16 @@ def patameter_status_state_transition(txt, backend_db_con) :
     # TX Response
     return (new_state, send_msg)
 
-def query_state_transition(txt, backend_db_con) :
+def query_state_transition(msg, backend_db_con) :
     """! Performs query.
-    @param txt password string
+    @param msg password string
 
     @return parameter result of query
     
     """
     logging.info("Enter query_state_transition")
 
-    # Deserialize Request
-    query = Q_Msg_Query_Deserialize(txt)
+    query = msg[QUERY_MSG__SIMPLE_QUERY]
 
     # Query backend database
     result = execute_query(backend_db_con, query)
@@ -176,8 +183,23 @@ def CreatePGStateMachine() :
     pg_mimic.add_state(END_STATE, None, end_state=1)
     pg_mimic.set_start(STARTUP_STATE)
 
-    # pg_mimic.backend_db_con = get_db(   host = HOST, port = PORT, 
-    #                                     database = DATABASE, 
-    #                                     username = USERNAME, password = PASSWORD)
+    pg_mimic.backend_db_con = get_db(   host = HOST, port = PORT, 
+                                        database = DATABASE, 
+                                        username = USERNAME, password = PASSWORD)
 
     return pg_mimic
+
+def is_initial_state(sm) :
+    """
+    Input : Receives a  StateMachine()
+    Output : True if state is STARTUP_STATE, False otherwise.
+    """
+    return True if sm.new_state == STARTUP_STATE else False
+
+def force_initial_state(sm) :
+    """
+    Forces the state machine to return to initial state, in case session ended
+    Input : Receives a  StateMachine()
+    Output : N/A
+    """
+    sm.new_state = STARTUP_STATE

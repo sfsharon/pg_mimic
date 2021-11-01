@@ -508,7 +508,7 @@ class Handler(SocketServer.BaseRequestHandler):
         return rVal
 
 
-    def Q_Msg_Query_Deserialize(self, data) :
+    def Q_Msg_Simple_Query_Deserialize(self, data) :
         """! Deserialize Query message
         @param N/A
 
@@ -531,9 +531,9 @@ class Handler(SocketServer.BaseRequestHandler):
         assert msg_ident == "Q"
         self.curr_query = data[header_length:]
 
-        print "*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
+        print "*** Q_Msg_Simple_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
 
-    def P_Msg_Query_Deserialize(self, data):
+    def P_Msg_Parse_Deserialize(self, data):
         """! Deserialize Parse message
         @param N/A
 
@@ -565,7 +565,7 @@ class Handler(SocketServer.BaseRequestHandler):
         assert msg_ident == "P"
         self.curr_query = data[header_length:]
 
-        print "*** Q_Msg_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
+        print "*** Q_Msg_Simple_Query_Deserialize: Query received \"{}\"".format(self.curr_query)
 
     def Startup_Msg_Deserialize(self) :
         """! Deserialize startup message
