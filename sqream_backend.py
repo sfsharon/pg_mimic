@@ -24,6 +24,9 @@ def execute_query (connection, query) :
     logging.info("*** get_db : Column types {}".format(str(cur.description)))
 
     result = cur.fetchall()
+
+    logging.info("*** get_db : Result {}".format(str(result)))
+
     return result
 
 if __name__ == "__main__" :

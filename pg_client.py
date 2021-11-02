@@ -17,7 +17,10 @@ PBI_PBDES_MSG_3 = b"P\x00\x00\x00\xb6\x00select TABLE_SCHEMA, TABLE_NAME, TABLE_
 PBI_MSGS = [PBI_STARTUP_MSG_1, PBI_PASSWORD_MSG_2, PBI_PBDES_MSG_3]
 
 # psql sequence of messages
-# ---- TODO ----
+PSQL_STARTUP_MSG_1 = b'\x00\x00\x00W\x00\x03\x00\x00user\x00postgres\x00database\x00postgres\x00application_name\x00psql\x00client_encoding\x00WIN1252\x00\x00'
+PSQL_PASSWD_MSG_2= b'p\x00\x00\x00(md529c7bf08e60cbef8e4d36c5abc01f638\x00'
+PSQL_SIMPLE_QUERY_MSG_3 = b'Q\x00\x00\x00\x19select * from test1;\x00'
+PSQL_MSGS = [PSQL_STARTUP_MSG_1, PSQL_PASSWD_MSG_2, PSQL_SIMPLE_QUERY_MSG_3]
 
 def run_UT(host, port, msgs):
     RX_BUFF_SIZE = 4096
@@ -25,21 +28,23 @@ def run_UT(host, port, msgs):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((host, port))
 
-        while True:
-            for msg in msgs :
-                sock.sendall(msg)
+        for msg in msgs :
+            print("[+] Sending : {}".format(str(msg)))
 
-                print("[+] Sending to {}:{}".format(host, port))
+            sock.sendall(msg)
 
-                response = sock.recv(RX_BUFF_SIZE)
+            response = sock.recv(RX_BUFF_SIZE)
 
-                if not response:
-                    print("[-] Not Received")
-                    break
+            if not response:
+                print("[-] Not Received")
+                break
 
-                print("[+] Received", repr(response.decode('utf-8')))
+            print("[+] Received {}".format(str(response)))
 
 if __name__ == "__main__" :
     PG_PORT = 5432
     HOST = "localhost"
-    run_UT(HOST, PG_PORT, PBI_MSGS)
+    client_msgs = PSQL_MSGS
+    # client_msgs = PBI_MSGS
+
+    run_UT(HOST, PG_PORT, client_msgs)

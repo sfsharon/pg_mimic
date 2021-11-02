@@ -159,7 +159,6 @@ def query_state_transition(msg, backend_db_con) :
     send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
 
     # Next state
-    # TODO - Fix Endless loop
     new_state = QUERY_STATE
 
     # TX Response
