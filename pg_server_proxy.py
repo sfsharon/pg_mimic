@@ -12,9 +12,10 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 27/10/2021 2130
-  1. Integrate with PowerBI :
-    Complete function parse(tokenized_msgs) :
+#  TODO 1/11/2021 1910
+  1. Integrate with PowerBI -
+     1.1 Complete the TCP UT client for psql and PBI complete sequence
+     1.2 Run initialization sequence with PBI 
 """
 
 
