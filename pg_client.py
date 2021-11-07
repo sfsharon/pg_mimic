@@ -44,7 +44,7 @@ def run_UT(host, port, msgs):
 if __name__ == "__main__" :
     PG_PORT = 5432
     HOST = "localhost"
-    client_msgs = PSQL_MSGS
-    # client_msgs = PBI_MSGS
+    #client_msgs = PSQL_MSGS
+    client_msgs = PBI_MSGS
 
     run_UT(HOST, PG_PORT, client_msgs)

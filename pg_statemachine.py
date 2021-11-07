@@ -8,10 +8,10 @@ Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-form
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
-# *****************************************************
-# * General State machine implementation
-# *****************************************************
-class StateMachine:    
+# ********************************************************
+# * PG communication protocol State machine implementation
+# ********************************************************
+class PG_StateMachine:    
     def __init__(self):
         self.handlers = {}
         self.new_state = None
@@ -40,8 +40,9 @@ class StateMachine:
         # Run state logic
         (self.new_state, send_msg) = handler(curr_msg, self.backend_db_con)
 
-        # Remove digested message from parsed messages list
-        parsed_msgs = parsed_msgs[1:]
+        # If current state has an output, remove input message ("digested message") from parsed messages list
+        if len(send_msg) > 0 :
+            parsed_msgs = parsed_msgs[1:]
 
         # Update next state logic handler
         handler = self.handlers[self.new_state] 
@@ -60,6 +61,8 @@ STARTUP_STATE = "STARTUP_STATE"
 PASSWORD_STATE = "PASSWORD_STATE"
 PARAMETER_STATUS_STATE = "PARAMETER_STATUS_STATE"
 QUERY_STATE = "QUERY_STATE"
+SIMPLE_QUERY_STATE = "SIMPLE_QUERY_STATE"
+PARSE_QUERY_STATE = "PARSE_QUERY_STATE"
 END_STATE = "END_STATE"
 
 def startup_transition(txt, backend_db_con) :
@@ -135,14 +138,41 @@ def patameter_status_state_transition(msg, backend_db_con) :
     return (new_state, send_msg)
 
 def query_state_transition(msg, backend_db_con) :
-    """! Performs query.
+    """! In-between state, to decide if this is a simple or parse message.
+    @param msg password string
+
+    @return N/A
+    
+    """
+    logging.info("Enter query_state_transition")
+
+    send_msg = ''
+
+    # Update logic
+    if msg[MSG_ID] == QUERY_MSG_ID :        
+        new_state = SIMPLE_QUERY_STATE
+        return (new_state, send_msg)
+
+    elif msg[MSG_ID] == PARSE_MSG_ID :
+        new_state = PARSE_QUERY_STATE
+        return (new_state, send_msg)
+    else :
+        raise ValueError('Received unknown message ID : ', msg[MSG_ID])
+
+
+def simple_query_state_transition(msg, backend_db_con) :
+    """! Performs simple query.
     @param msg password string
 
     @return parameter result of query
     
     """
-    logging.info("Enter query_state_transition")
+    logging.info("Enter simple_query_state_transition")
 
+    send_msg = ''
+
+    assert (msg[MSG_ID] == QUERY_MSG_ID), f"Received a wrong message ID {msg[MSG_ID]}"
+    
     query = msg[QUERY_MSG__SIMPLE_QUERY]
 
     # Query backend database
@@ -158,11 +188,46 @@ def query_state_transition(msg, backend_db_con) :
     send_msg += C_Msg_CommandComplete_Serialize('SELECT 3') 
     send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
 
-    # Next state
+    # Next state - Query state, be prepared for the next query
     new_state = QUERY_STATE
 
     # TX Response
     return (new_state, send_msg)
+
+def parse_query_state_transition(msg, backend_db_con) :
+    """! Performs parse query.
+    @param 
+
+    @return
+    
+    """
+    # logging.info("Enter parse_query_state_transition")
+
+    # send_msg = ''
+
+    # assert (msg[MSG_ID] == QUERY_MSG_ID), f"Received a wrong message ID {msg[MSG_ID]}"
+    
+    # query = msg[QUERY_MSG__SIMPLE_QUERY]
+
+    # # Query backend database
+    # result = execute_query(backend_db_con, query)
+
+    # # Serialize Response    
+    # send_msg = T_Msg_RowDescription_Serialize(['xint']) 
+
+    # for row_val in result :
+    #     send_msg += D_Msg_DataRow_Serialize(row_val) 
+
+
+    # send_msg += C_Msg_CommandComplete_Serialize('SELECT 3') 
+    # send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+
+    # # Next state - Query state, be prepared for the next query
+    # new_state = QUERY_STATE
+
+    # # TX Response
+    # return (new_state, send_msg)
+
 
 # ---------------------------------------------------------------------------------------------
 HOST = "192.168.4.64"
@@ -174,11 +239,13 @@ PASSWORD = "sqream"
 
 # Put it all together
 def CreatePGStateMachine() :
-    pg_mimic = StateMachine()
+    pg_mimic = PG_StateMachine()
     pg_mimic.add_state(STARTUP_STATE, startup_transition)
     pg_mimic.add_state(PASSWORD_STATE, password_state_transition)
     pg_mimic.add_state(PARAMETER_STATUS_STATE, patameter_status_state_transition)
     pg_mimic.add_state(QUERY_STATE, query_state_transition)
+    pg_mimic.add_state(SIMPLE_QUERY_STATE, simple_query_state_transition)
+    pg_mimic.add_state(PARSE_QUERY_STATE, parse_query_state_transition)
     pg_mimic.add_state(END_STATE, None, end_state=1)
     pg_mimic.set_start(STARTUP_STATE)
 
@@ -190,7 +257,7 @@ def CreatePGStateMachine() :
 
 def is_initial_state(sm) :
     """
-    Input : Receives a  StateMachine()
+    Input : Receives a  PG_StateMachine()
     Output : True if state is STARTUP_STATE, False otherwise.
     """
     return True if sm.new_state == STARTUP_STATE else False
@@ -198,7 +265,7 @@ def is_initial_state(sm) :
 def force_initial_state(sm) :
     """
     Forces the state machine to return to initial state, in case session ended
-    Input : Receives a  StateMachine()
+    Input : Receives a  PG_StateMachine()
     Output : N/A
     """
     sm.new_state = STARTUP_STATE
