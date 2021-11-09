@@ -2,11 +2,19 @@
 """
 Implements Postgres wire protocol state machine
 FSM : https://www.python-course.eu/finite_state_machine.php
-Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-formats.html          
+Postgres network messages formats : https://www.postgresql.org/docs/12/protocol-message-formats.html          
 """
 
 import logging
 logging.basicConfig(level=logging.DEBUG)
+
+# *****************************************************
+# * State machine constants
+# *****************************************************
+STATE_MACHINE__NEW_STATE = "new_state"
+STATE_MACHINE__OUTPUT_MSG = "send_msg"
+STATE_MACHINE__IS_TX_MSG = "is_tx_msg"
+STATE_MACHINE__PARSED_MSGS = "parsed_msgs"
 
 # ********************************************************
 # * PG communication protocol State machine implementation
@@ -24,30 +32,25 @@ class PG_StateMachine:
     def set_start(self, name):
         self.new_state = name
 
-    def run(self, parsed_msgs):
-        try:
-            handler = self.handlers[self.new_state]
-        except:
-            raise InitializationError("must call .set_start() before .run()")
+    def run(self, parsed_msgs, output_msg):
+        """
+        parsed_msgs : List of dictionaries, holding the input mesages
+        output_msg : A string being built by the states in the state machine.
+        """
 
-        #Process the first message in parsed messages list
-        curr_msg = {}
-        if len(parsed_msgs) > 0 :
-            curr_msg = parsed_msgs[0]
-        else :
-            logging.info(f"Executing state {self.new_state} without input")
+        res = {}
+
+        handler = self.handlers[self.new_state]
 
         # Run state logic
-        (self.new_state, send_msg) = handler(curr_msg, self.backend_db_con)
-
-        # If current state has an output, remove input message ("digested message") from parsed messages list
-        if len(send_msg) > 0 :
-            parsed_msgs = parsed_msgs[1:]
+        res = handler(  parsed_msgs, #input_msg, 
+                        output_msg, 
+                        self.backend_db_con)        
 
         # Update next state logic handler
-        handler = self.handlers[self.new_state] 
+        self.new_state = res[STATE_MACHINE__NEW_STATE] 
 
-        return send_msg, parsed_msgs
+        return res
 
 # ------------------------------------------------------------------------------------
 
@@ -65,45 +68,56 @@ SIMPLE_QUERY_STATE = "SIMPLE_QUERY_STATE"
 PARSE_QUERY_STATE = "PARSE_QUERY_STATE"
 END_STATE = "END_STATE"
 
-def startup_transition(txt, backend_db_con) :
-    logging.info("Enter startup_transition")
+def startup_transition(parsed_msgs, output_msg, backend_db_con) :
+    logging.info("Entering startup_transition")
 
+    res = {}
+
+    assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
+    input_msg = parsed_msgs[0]
+    # "munch" the input parsed_msgs
+    res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs[1:]
 
     # Serialize Response
-    send_msg = R_Msg_AuthRequest_Serialize()
+    res[STATE_MACHINE__OUTPUT_MSG] = R_Msg_AuthRequest_Serialize()
+
+    # Send response immediately
+    res[STATE_MACHINE__IS_TX_MSG] = True
 
     # Next state
-    new_state = PASSWORD_STATE
+    res[STATE_MACHINE__NEW_STATE] = PASSWORD_STATE # new_state = PASSWORD_STATE
 
-    # TX Response
-    return (new_state, send_msg)
+    return res
 
-def password_state_transition(msg, backend_db_con) :
+def password_state_transition(parsed_msgs, output_msg, backend_db_con) :
+    res = {}
+
+    assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
+    input_msg = parsed_msgs[0]
+    # "munch" the input parsed_msgs
+    res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs[1:]
+
+    # Serialize Response
+    res[STATE_MACHINE__OUTPUT_MSG] = output_msg # send_msg = ""
+
     # Verify this is password message
-    if not is_passwd_msg(msg) :
+    if not is_password_msg(input_msg) :
         logging.info("password_state_transition: Did not get password message. Returning to Startup")
-        # Serialize Response
-        send_msg = ""
+        
         # Next state
-        new_state = STARTUP_STATE
+        res[STATE_MACHINE__NEW_STATE] = STARTUP_STATE
+
     else :
-        logging.info("Enter password_state_transition")
-
-        # TODO : perform password authentication
-
-        # Deserialize Request
-        # TBD
-
-        # Serialize Response
-        send_msg = ""
+        logging.info("Entering password_state_transition")
 
         # Next state
-        new_state = PARAMETER_STATUS_STATE
+        res[STATE_MACHINE__NEW_STATE] = PARAMETER_STATUS_STATE # new_state = PARAMETER_STATUS_STATE
 
-    # TX Response
-    return (new_state, send_msg)
+    res[STATE_MACHINE__IS_TX_MSG] = False
 
-def patameter_status_state_transition(msg, backend_db_con) :
+    return res
+
+def patameter_status_state_transition(parsed_msgs, output_msg, backend_db_con) :
     """! Builds parameter status message during intialization phase.
          Does not take into account the password (the msg parameter)
     @param msg password 
@@ -111,103 +125,122 @@ def patameter_status_state_transition(msg, backend_db_con) :
     @return parameter status message
     
     """
-    logging.info("Enter patameter_status_state_transition")
+    logging.info("Entering patameter_status_state_transition")
 
-    # Deserialize Request
-    #N/A
+    res = {}
 
     # Serialize Response    
-    send_msg = R_Msg_AuthOk_Serialize()
+    output_msg = R_Msg_AuthOk_Serialize()
 
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('client_encoding'), str.encode('UTF8'))
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('DateStyle'), str.encode('ISO, MDY'))
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('integer_datetimes'), str.encode('on'))
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('IntervalStyle'), str.encode('postgres'))
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('is_superuser'), str.encode('on'))
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('server_encoding'), str.encode('UTF8'))
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('server_version'), str.encode('12.7'))
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('session_authorization'), str.encode('postgres'))
-    send_msg += S_Msg_ParameterStatus_Serialize (str.encode('standard_conforming_strings'), str.encode('on'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('client_encoding'), str.encode('UTF8'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('DateStyle'), str.encode('ISO, MDY'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('integer_datetimes'), str.encode('on'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('IntervalStyle'), str.encode('postgres'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('is_superuser'), str.encode('on'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('server_encoding'), str.encode('UTF8'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('server_version'), str.encode('12.7'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('session_authorization'), str.encode('postgres'))
+    output_msg += S_Msg_ParameterStatus_Serialize (str.encode('standard_conforming_strings'), str.encode('on'))
 
-    send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+    output_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+
+    res[STATE_MACHINE__OUTPUT_MSG] = output_msg
+    res[STATE_MACHINE__IS_TX_MSG] = True
 
     # Next state
-    new_state = QUERY_STATE
+    res[STATE_MACHINE__NEW_STATE] = QUERY_STATE # new_state = QUERY_STATE
 
-    # TX Response
-    return (new_state, send_msg)
+    return res
 
-def query_state_transition(msg, backend_db_con) :
+def query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     """! In-between state, to decide if this is a simple or parse message.
     @param msg password string
 
     @return N/A
     
     """
-    logging.info("Enter query_state_transition")
+    logging.info("Entering query_state_transition")
 
-    send_msg = ''
+    res = {}
+    assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
+    input_msg = parsed_msgs[0]
+    # Do not "munch" on the parsed_msgs
+    res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
 
     # Update logic
-    if msg[MSG_ID] == QUERY_MSG_ID :        
-        new_state = SIMPLE_QUERY_STATE
-        return (new_state, send_msg)
-
-    elif msg[MSG_ID] == PARSE_MSG_ID :
-        new_state = PARSE_QUERY_STATE
-        return (new_state, send_msg)
+    if input_msg[MSG_ID] == QUERY_MSG_ID :        
+        res[STATE_MACHINE__NEW_STATE] = SIMPLE_QUERY_STATE # new_state = SIMPLE_QUERY_STATE
+    elif input_msg[MSG_ID] == PARSE_MSG_ID :
+        res[STATE_MACHINE__NEW_STATE] = PARSE_QUERY_STATE# new_state = PARSE_QUERY_STATE
     else :
         raise ValueError('Received unknown message ID : ', msg[MSG_ID])
 
+    res[STATE_MACHINE__OUTPUT_MSG] = output_msg
+    res[STATE_MACHINE__IS_TX_MSG] = False
 
-def simple_query_state_transition(msg, backend_db_con) :
+    return res 
+
+def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     """! Performs simple query.
     @param msg password string
 
     @return parameter result of query
     
     """
-    logging.info("Enter simple_query_state_transition")
+    logging.info("Entering simple_query_state_transition")
 
-    send_msg = ''
+    res = {}
 
-    assert (msg[MSG_ID] == QUERY_MSG_ID), f"Received a wrong message ID {msg[MSG_ID]}"
+    assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
+    input_msg = parsed_msgs[0]
+    res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs[1:]
+
+    assert (input_msg[MSG_ID] == QUERY_MSG_ID), f"Received a wrong message ID {msg[MSG_ID]}"
     
-    query = msg[QUERY_MSG__SIMPLE_QUERY]
+    query = input_msg[QUERY_MSG__SIMPLE_QUERY]
 
     # Query backend database
     result = execute_query(backend_db_con, query)
 
     # Serialize Response    
-    send_msg = T_Msg_RowDescription_Serialize(['xint']) 
+    msg = T_Msg_RowDescription_Serialize(['xint']) 
 
     for row_val in result :
-        send_msg += D_Msg_DataRow_Serialize(row_val) 
+        msg += D_Msg_DataRow_Serialize(row_val) 
 
 
-    send_msg += C_Msg_CommandComplete_Serialize('SELECT 3') 
-    send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+    # TODO : Update C message string dynamically
+    msg += C_Msg_CommandComplete_Serialize('SELECT 3') 
+
+    msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+
+    res[STATE_MACHINE__OUTPUT_MSG] = output_msg + msg
+    res[STATE_MACHINE__IS_TX_MSG] = True
 
     # Next state - Query state, be prepared for the next query
-    new_state = QUERY_STATE
+    res[STATE_MACHINE__NEW_STATE] = QUERY_STATE
 
-    # TX Response
-    return (new_state, send_msg)
+    return res
 
-def parse_query_state_transition(msg, backend_db_con) :
+def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     """! Performs parse query.
     @param 
 
     @return
     
     """
-    # logging.info("Enter parse_query_state_transition")
+    logging.info("Entering parse_query_state_transition")
 
-    # send_msg = ''
+    res = {}
+    send_msg = ''
 
-    # assert (msg[MSG_ID] == QUERY_MSG_ID), f"Received a wrong message ID {msg[MSG_ID]}"
+    assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
+    input_msg = parsed_msgs[0]
+    res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs[1:]
+
+    assert (input_msg[MSG_ID] == PARSE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
     
-    # query = msg[QUERY_MSG__SIMPLE_QUERY]
+    query = input_msg[PARSE_MSG__QUERY]
 
     # # Query backend database
     # result = execute_query(backend_db_con, query)
@@ -222,11 +255,14 @@ def parse_query_state_transition(msg, backend_db_con) :
     # send_msg += C_Msg_CommandComplete_Serialize('SELECT 3') 
     # send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
 
-    # # Next state - Query state, be prepared for the next query
+    # Next state - Query state, be prepared for the next query
     # new_state = QUERY_STATE
 
-    # # TX Response
+    res[STATE_MACHINE__IS_TX_MSG] = False
+
+    # TX Response
     # return (new_state, send_msg)
+    return res
 
 
 # ---------------------------------------------------------------------------------------------

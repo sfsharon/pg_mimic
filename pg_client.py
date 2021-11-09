@@ -3,6 +3,9 @@
 Postgres Client for unit testing
 Transmits (plays) client (psql or Power BI) pre-recorded messages sequentialy for unit testing the pg_server_proxy module   
 TCP Client example taken from: https://gist.github.com/homoluctus/5ee21411dd89cebbb237b51ab56f0a4c
+
+Running psql from Windows PowerShell : 
+<power shell> & 'C:\Program Files\PostgreSQL\13\bin\psql.exe' "dbname=postgres user=postgres sslmode=disable"
 """
 
 import logging
@@ -44,7 +47,7 @@ def run_UT(host, port, msgs):
 if __name__ == "__main__" :
     PG_PORT = 5432
     HOST = "localhost"
-    #client_msgs = PSQL_MSGS
-    client_msgs = PBI_MSGS
+    client_msgs = PSQL_MSGS
+    #client_msgs = PBI_MSGS
 
     run_UT(HOST, PG_PORT, client_msgs)

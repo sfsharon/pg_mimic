@@ -12,10 +12,9 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 1/11/2021 1910
+#  TODO 9/11/2021 1015
   1. Integrate with PowerBI -
-     1.1 Complete the TCP UT client for psql and PBI complete sequence
-     1.2 Run initialization sequence with PBI 
+     1.1 Run initialization sequence with PBI 
 """
 
 
@@ -49,14 +48,19 @@ class MyPGHandler(socketserver.BaseRequestHandler):
             # Parse messages to their attributes
             parsed_msgs = parse(tokens, is_expecting_startup_msg)
 
+            # Initialize the result return object from the state machine 
+            res = {}
+            res[STATE_MACHINE__IS_TX_MSG] = False
+            res[STATE_MACHINE__OUTPUT_MSG]  = bytes('', "utf-8")
+            res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
 
             # Run state machine as long as the state transitions have nothing to transmit
-            send_msg = ""
-            while send_msg == "" :
-                send_msg, parsed_msgs = self.server.pg_sm.run(parsed_msgs)
+            while res[STATE_MACHINE__IS_TX_MSG] == False :            
+                res = self.server.pg_sm.run(res[STATE_MACHINE__PARSED_MSGS], 
+                                            res[STATE_MACHINE__OUTPUT_MSG])
 
             # TX Response
-            self.request.sendall(send_msg)
+            self.request.sendall(res[STATE_MACHINE__OUTPUT_MSG])            
 
 
 def RunPGServer(host, port) :

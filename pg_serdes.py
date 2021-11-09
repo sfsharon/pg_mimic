@@ -83,7 +83,7 @@ def utility_int_to_text(val) :
     rVal = rVal[::-1]           # Reverse the string
     return rVal
 
-def is_passwd_msg(msg):
+def is_password_msg(msg):
     """
     Verify message is a PASSWORD message
     """
