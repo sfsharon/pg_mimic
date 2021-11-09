@@ -242,6 +242,8 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     
     query = input_msg[PARSE_MSG__QUERY]
 
+    logging.info ("Recieved query :\n" + (query.decode("utf-8")))
+    
     # # Query backend database
     # result = execute_query(backend_db_con, query)
 
