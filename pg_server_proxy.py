@@ -12,9 +12,10 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 9/11/2021 1015
-  1. Integrate with PowerBI -
-     1.1 Run initialization sequence with PBI 
+#  TODO 11/11/2021 1730
+  1. Update simple_query_state_transition() according to the cols_desc refactoring
+  2. Finish the function parse_query_state_transition() for the case of the PBI query PBI_INIT_TYPE_QUERY :
+         Make sure D_Msg_DataRow_Serialize() is working correctly for the psql use case, because a column type parameter has been added.
 """
 
 

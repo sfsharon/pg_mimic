@@ -43,7 +43,7 @@ class PG_StateMachine:
         handler = self.handlers[self.new_state]
 
         # Run state logic
-        res = handler(  parsed_msgs, #input_msg, 
+        res = handler(  parsed_msgs, 
                         output_msg, 
                         self.backend_db_con)        
 
@@ -181,7 +181,7 @@ def query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     return res 
 
 def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
-    """! Performs simple query.
+    """! Performs simple query. Use case : Activated from the psql client
     @param msg password string
 
     @return parameter result of query
@@ -200,17 +200,21 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     query = input_msg[QUERY_MSG__SIMPLE_QUERY]
 
     # Query backend database
-    result = execute_query(backend_db_con, query)
+    query_output = execute_query(backend_db_con, query)
 
-    # Serialize Response    
-    msg = T_Msg_RowDescription_Serialize(['xint']) 
+    cols_desc = query_output[BACKEND_QUERY__DESCRIPTION]
+    result    = query_output[BACKEND_QUERY__RESULT]
 
-    for row_val in result :
-        msg += D_Msg_DataRow_Serialize(row_val) 
+    # Serialize Response
+    msg = T_Msg_RowDescription_Serialize(cols_desc) 
 
+    for cols_values in result :
+        msg += D_Msg_DataRow_Serialize(cols_desc, cols_values) 
+
+    num_of_lines = len(result)
 
     # TODO : Update C message string dynamically
-    msg += C_Msg_CommandComplete_Serialize('SELECT 3') 
+    msg += C_Msg_CommandComplete_Serialize('SELECT ' + str(num_of_lines)) 
 
     msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
 
@@ -231,19 +235,27 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     """
     logging.info("Entering parse_query_state_transition")
 
-    res = {}
-    send_msg = ''
-
     assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
     input_msg = parsed_msgs[0]
     res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs[1:]
 
     assert (input_msg[MSG_ID] == PARSE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
+
+    res = {}
     
+    send_msg = bytes('', "utf-8")
+
     query = input_msg[PARSE_MSG__QUERY]
 
     logging.info ("Recieved query :\n" + (query.decode("utf-8")))
-    
+
+    if query == PBI_INIT_TYPE_QUERY :
+        logging.info ("Got initial PBI type query\n")
+        send_msg += One_Msg_ParseComplete_Serialize()
+        send_msg += Two_Msg_ParseComplete_Serialize()
+        send_msg += T_Msg_RowDescription_Serialize(['nspname', 'typname', 'oid', 'typrelid', 'typbasetype', 'type', 'elemoid', 'ord'])
+
+
     # # Query backend database
     # result = execute_query(backend_db_con, query)
 

@@ -9,6 +9,14 @@ logging.basicConfig(level=logging.DEBUG)
 
 import pysqream
 
+from pg_serdes import *
+
+# ***********************************************
+# * Constants
+# ***********************************************
+BACKEND_QUERY__DESCRIPTION   = "backend_query__description"
+BACKEND_QUERY__RESULT        = "backend_query__result"
+
 def get_db(host, port, database, username, password) :
     logging.info("*** get_db : Connecting to SQream server {}:{}".format(host, port))
     con = pysqream.connect( host, port,database, username, password)
@@ -27,7 +35,23 @@ def execute_query (connection, query) :
 
     logging.info("*** get_db : Result {}".format(str(result)))
 
-    return result
+    cols_type   = [metadata[0] for metadata in cur.col_type_tups]
+    cols_length = [metadata[1] for metadata in cur.col_type_tups]
+    cols_name   = [metadata[0] for metadata in cur.description]
+    num_of_cols = len(cols_type)
+
+    assert len(cols_type) == len(cols_length) == len(cols_name), "Wrong number of column attributes"
+
+    data_format = COL_FORMAT_TEXT # Hardcoded text format
+    cols_desc = []
+    for index in range(num_of_cols) :
+        cols_desc.append({COL_DESC__NAME : cols_name[index],
+                          COL_DESC__TYPE : cols_type[index],
+                          COL_DESC__FORMAT : data_format,
+                          COL_DESC__LENGTH : cols_length[index]})
+    
+    return {BACKEND_QUERY__DESCRIPTION : cols_desc,
+            BACKEND_QUERY__RESULT      : result}
 
 if __name__ == "__main__" :
     HOST = "192.168.4.64"

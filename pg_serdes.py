@@ -28,15 +28,11 @@ READY_FOR_QUERY_MSG_ID = bytes('Z', "utf-8")
 CMD_COMPLETE_MSG_ID = bytes('C', "utf-8")
 DATA_COLS_MSG_ID = bytes('D', "utf-8")
 ROW_DESC_MSG_ID = bytes('T', "utf-8")
+PARSE_COMPLETE_MSG_ID = bytes('1', "utf-8")
+BIND_COMPLETE_MSG_ID = bytes('2', "utf-8")
 
 # Server state
 READY_FOR_QUERY_SERVER_STATUS_IDLE = bytes('I', "utf-8")
-
-# Row description 
-INT_TYPE_OID = 23
-INT_TYPE_COLUMN_LENGTH = 4
-TYPE_FORMAT_TEXT = 0
-TYPE_FORMAT_BINARY = 1
 
 # Message attributes
 MSG_ID = "msg_id"
@@ -60,9 +56,24 @@ DESCRIBE_MSG__PORTAL        = "portal"
 EXECUTE_MSG__PORTAL         = "portal"
 EXECUTE_MSG__ROWS_TO_RETURN = "rows_to_return"
 
+# Column description (T message)
+# ------------------------------
+# Description dictionary names
+COL_DESC__NAME   = "col_desc_name"
+COL_DESC__TYPE   = "col_desc_type"
+COL_DESC__FORMAT = "col_desc_format"
+COL_DESC__LENGTH = "col_desc_length"
+
+# Column formats 
+COL_FORMAT_TEXT    = 0
+COL_FORMAT_BINARY  = 1
+
+# Column types 
+COL_INT_TYPE_OID = 23
 
 # Misc
 NULL_TERMINATOR = b'\x00'
+PBI_INIT_TYPE_QUERY = b"\r\n/*** Load all supported types ***/\r\nSELECT ns.nspname, a.typname, a.oid, a.typrelid, a.typbasetype,\r\nCASE WHEN pg_proc.proname='array_recv' THEN 'a' ELSE a.typtype END AS type,\r\nCASE\r\n  WHEN pg_proc.proname='array_recv' THEN a.typelem\r\n  WHEN a.typtype='r' THEN rngsubtype\r\n  ELSE 0\r\nEND AS elemoid,\r\nCASE\r\n  WHEN pg_proc.proname IN ('array_recv','oidvectorrecv') THEN 3    /* Arrays last */\r\n  WHEN a.typtype='r' THEN 2                                        /* Ranges before */\r\n  WHEN a.typtype='d' THEN 1                                        /* Domains before */\r\n  ELSE 0                                                           /* Base types first */\r\nEND AS ord\r\nFROM pg_type AS a\r\nJOIN pg_namespace AS ns ON (ns.oid = a.typnamespace)\r\nJOIN pg_proc ON pg_proc.oid = a.typreceive\r\nLEFT OUTER JOIN pg_class AS cls ON (cls.oid = a.typrelid)\r\nLEFT OUTER JOIN pg_type AS b ON (b.oid = a.typelem)\r\nLEFT OUTER JOIN pg_class AS elemcls ON (elemcls.oid = b.typrelid)\r\nLEFT OUTER JOIN pg_range ON (pg_range.rngtypid = a.oid) \r\nWHERE\r\n  a.typtype IN ('b', 'r', 'e', 'd') OR         /* Base, range, enum, domain */\r\n  (a.typtype = 'c' AND cls.relkind='c') OR /* User-defined free-standing composites (not table composites) by default */\r\n  (pg_proc.proname='array_recv' AND (\r\n    b.typtype IN ('b', 'r', 'e', 'd') OR       /* Array of base, range, enum, domain */\r\n    (b.typtype = 'p' AND b.typname IN ('record', 'void')) OR /* Arrays of special supported pseudo-types */\r\n    (b.typtype = 'c' AND elemcls.relkind='c')  /* Array of user-defined free-standing composites (not table composites) */\r\n  )) OR\r\n  (a.typtype = 'p' AND a.typname IN ('record', 'void'))  /* Some special supported pseudo-types */\r\nORDER BY ord\x00"
 
 # ***********************************************
 # * Utility functions
@@ -465,9 +476,10 @@ def S_Msg_ParameterStatus_Serialize(param_name, param_value) :
 
     return rVal
 
-def D_Msg_DataRow_Serialize(col_values) :
+def D_Msg_DataRow_Serialize(cols_desc, cols_values) :
     """! Serialize a data col section.
-    @param row_values list of column values
+    @param cols_desc description of columns - Column name, Column type
+    @param cols_values list of column values
 
     @return packed bytes of column values (D message)         
 
@@ -495,26 +507,31 @@ def D_Msg_DataRow_Serialize(col_values) :
 
     rVal = bytes('', "utf-8")
 
-    Field_count = len(col_values)
+    assert len(cols_values) == len(cols_desc), "Number of columns values and number of columns types do not match"
 
-    for count, col_value in enumerate (col_values) :
-        if isinstance(col_value, int):
+    fields_count = len(cols_values)
+
+    for index, col_value in enumerate (cols_values) :
+        if cols_desc[index][COL_DESC__TYPE] == COL_FORMAT_TEXT :
             col_value_string = utility_int_to_text(col_value)
-        else:
+        elif cols_desc[index][COL_DESC__TYPE] == COL_FORMAT_BINARY :
             col_value_string = bytes(col_value, "utf-8")
+        else :
+            raise ValueError('Unsupported serialize type : ', cols_desc[index])
+
         rVal += struct.pack(COLDESC_FORMAT, len(col_value_string)) + col_value_string
 
     Length = struct.calcsize(HEADERFORMAT) + len(rVal)
 
-    rVal = DATA_COLS_MSG_ID + struct.pack(HEADERFORMAT, Length, Field_count) + rVal
+    rVal = DATA_COLS_MSG_ID + struct.pack(HEADERFORMAT, Length, fields_count) + rVal
 
     return rVal
 
 
-def T_Msg_RowDescription_Serialize(row_names):
+def T_Msg_RowDescription_Serialize(cols_desc):
         """! Serialize a row description section.
 
-        @param row_names list of row names string
+        @param cols_desc: list of column attributes (e.g. name, type)
 
         @return packed bytes of rows description (T message)        
 
@@ -559,17 +576,17 @@ def T_Msg_RowDescription_Serialize(row_names):
 
         rVal = bytes('', "utf-8")
 
-        Field_count = len(row_names)
+        field_count = len(cols_desc) # len(row_names)
 
-        for count, row_name in enumerate (row_names) :            
-            null_term_row_name = bytes(row_name, "utf-8") + NULL_TERMINATOR
+        for count, col_desc in enumerate (cols_desc) :            
+            null_term_row_name = bytes(col_desc[COL_DESC__NAME], "utf-8") + NULL_TERMINATOR
             
-            Table_OID = 49152               # Hard coded value
+            Table_OID = 49152                          # Hard coded value
             Column_index = count + 1
-            Type_OID = INT_TYPE_OID                 # Hard coded value. More information on OID Types : https://www.postgresql.org/docs/9.4/datatype-oid.html
-            Column_length = INT_TYPE_COLUMN_LENGTH  # Hard coded value. Fits Int type size.
-            Type_modifier = -1                      # Hard coded value. 
-            Format = TYPE_FORMAT_TEXT               # Hard coded value. Fits text format.
+            Type_OID = col_desc[COL_DESC__TYPE]        # More information on OID Types : https://www.postgresql.org/docs/9.4/datatype-oid.html
+            Column_length = col_desc[COL_DESC__LENGTH] 
+            Type_modifier = -1                         # Hard coded value. 
+            Format = col_desc[COL_DESC__FORMAT] 
             rVal += null_term_row_name + struct.pack(ROWDESC_FORMAT, 
                                                     Table_OID, 
                                                     Column_index, 
@@ -580,7 +597,7 @@ def T_Msg_RowDescription_Serialize(row_names):
 
         Length = struct.calcsize(HEADERFORMAT) + len(rVal)
 
-        rVal = ROW_DESC_MSG_ID + struct.pack(HEADERFORMAT, Length, Field_count) + rVal
+        rVal = ROW_DESC_MSG_ID + struct.pack(HEADERFORMAT, Length, field_count) + rVal
 
         return rVal
 
@@ -698,6 +715,52 @@ def Z_Msg_ReadyForQuery_Serialize(server_status) :
     Length = struct.calcsize(HEADERFORMAT) + len(server_status)
 
     rVal = READY_FOR_QUERY_MSG_ID + struct.pack(HEADERFORMAT, Length) + READY_FOR_QUERY_SERVER_STATUS_IDLE
+
+    return rVal
+
+
+def One_Msg_ParseComplete_Serialize() :
+    """! Serialize a parse complete section.
+    @param 
+
+    @return
+
+    ParseComplete (Backend)
+        Byte1('1')
+        Identifies the message as a Parse-complete indicator.
+
+        Int32(4)
+        Length of message contents in bytes, including self.
+
+    """
+    HEADERFORMAT = "!i"         # Length 
+
+    Length = struct.calcsize(HEADERFORMAT) 
+
+    rVal = PARSE_COMPLETE_MSG_ID + struct.pack(HEADERFORMAT, Length) 
+
+    return rVal
+
+
+def Two_Msg_BindComplete_Serialize() :
+    """! Serialize a bind complete section.
+    @param 
+
+    @return
+
+    BindComplete (Backend)
+        Byte1('2')
+        Identifies the message as a Bind-complete indicator.
+
+        Int32(4)
+        Length of message contents in bytes, including self.
+
+    """
+    HEADERFORMAT = "!i"         # Length 
+
+    Length = struct.calcsize(HEADERFORMAT) 
+
+    rVal = BIND_COMPLETE_MSG_ID + struct.pack(HEADERFORMAT, Length) 
 
     return rVal
 
