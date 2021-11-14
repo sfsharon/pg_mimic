@@ -512,9 +512,9 @@ def D_Msg_DataRow_Serialize(cols_desc, cols_values) :
     fields_count = len(cols_values)
 
     for index, col_value in enumerate (cols_values) :
-        if cols_desc[index][COL_DESC__TYPE] == COL_FORMAT_TEXT :
+        if cols_desc[index][COL_DESC__FORMAT] == COL_FORMAT_TEXT :
             col_value_string = utility_int_to_text(col_value)
-        elif cols_desc[index][COL_DESC__TYPE] == COL_FORMAT_BINARY :
+        elif cols_desc[index][COL_DESC__FORMAT] == COL_FORMAT_BINARY :
             col_value_string = bytes(col_value, "utf-8")
         else :
             raise ValueError('Unsupported serialize type : ', cols_desc[index])

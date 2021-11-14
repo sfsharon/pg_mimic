@@ -17,6 +17,12 @@ from pg_serdes import *
 BACKEND_QUERY__DESCRIPTION   = "backend_query__description"
 BACKEND_QUERY__RESULT        = "backend_query__result"
 
+SQREAM_TYPE_INT              = 'ftInt'
+
+# ***********************************************
+# * Functionality
+# ***********************************************
+
 def get_db(host, port, database, username, password) :
     logging.info("*** get_db : Connecting to SQream server {}:{}".format(host, port))
     con = pysqream.connect( host, port,database, username, password)
@@ -35,7 +41,9 @@ def execute_query (connection, query) :
 
     logging.info("*** get_db : Result {}".format(str(result)))
 
+    # Get column type
     cols_type   = [metadata[0] for metadata in cur.col_type_tups]
+
     cols_length = [metadata[1] for metadata in cur.col_type_tups]
     cols_name   = [metadata[0] for metadata in cur.description]
     num_of_cols = len(cols_type)
@@ -45,8 +53,14 @@ def execute_query (connection, query) :
     data_format = COL_FORMAT_TEXT # Hardcoded text format
     cols_desc = []
     for index in range(num_of_cols) :
-        cols_desc.append({COL_DESC__NAME : cols_name[index],
-                          COL_DESC__TYPE : cols_type[index],
+        # Translate type to Postgres value
+        if cols_type[index] == SQREAM_TYPE_INT :
+            col_type = COL_INT_TYPE_OID
+        else :
+            raise ValueError("Received unsupported column type ", cols_type[index])
+        
+        cols_desc.append({COL_DESC__NAME   : cols_name[index],
+                          COL_DESC__TYPE   : col_type,
                           COL_DESC__FORMAT : data_format,
                           COL_DESC__LENGTH : cols_length[index]})
     
