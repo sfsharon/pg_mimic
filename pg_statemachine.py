@@ -176,7 +176,13 @@ def query_state_transition(parsed_msgs, output_msg, backend_db_con) :
         res[STATE_MACHINE__NEW_STATE] = PARSE_QUERY_STATE
     elif input_msg[MSG_ID] == SYNC_MSG_ID :
         res[STATE_MACHINE__NEW_STATE] = QUERY_STATE
+        # *** Munch Sync message from input, output Ready for Query message (input 'S', output 'Z')        
+        input_msg = parsed_msgs[0]
+        parsed_msgs = parsed_msgs[1:]
+        res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
+        output_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
         is_tx_msg = True
+        assert len(parsed_msgs) == 0, "Error - Receied additional message after the Sync message"
     else :
         raise ValueError('Received unknown message ID : ', input_msg[MSG_ID])
 
@@ -207,15 +213,15 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     query_output = execute_query(backend_db_con, query)
 
     cols_desc = query_output[BACKEND_QUERY__DESCRIPTION]
-    result    = query_output[BACKEND_QUERY__RESULT]
+    cols_values    = query_output[BACKEND_QUERY__RESULT]
 
     # Serialize Response
     msg = T_Msg_RowDescription_Serialize(cols_desc) 
 
-    for cols_values in result :
-        msg += D_Msg_DataRow_Serialize(cols_desc, cols_values) 
+    for col_values in cols_values :
+        msg += D_Msg_DataRow_Serialize(cols_desc, col_values) 
 
-    num_of_lines = len(result)
+    num_of_lines = len(cols_values)
 
     msg += C_Msg_CommandComplete_Serialize('SELECT ' + str(num_of_lines)) 
 
@@ -241,76 +247,73 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     # Initialization
     res = {}
     msg = bytes('', "utf-8")
+    is_tx_msg = False
 
-    # Munch Parse message from input (input 'P', output '1'), and get query stinrg
+    # *** Munch Parse message from input, output parse complete message (input 'P', output '1')
     assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
     input_msg = parsed_msgs[0]
     parsed_msgs = parsed_msgs[1:]
     assert (input_msg[MSG_ID] == PARSE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
 
+    # Get query stinrg
     query = input_msg[PARSE_MSG__QUERY]
-
-    logging.info ("Recieved query :\n" + (query.decode("utf-8")))
+    is_catalog_query = is_pg_catalog_msg(query)
+    
     msg += One_Msg_ParseComplete_Serialize()
     
-    # Munch Bind message from input (input 'B', output '2') 
+    # ***  Munch Bind message from input, output bind complete message (input 'B', output '2') 
     assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
     input_msg = parsed_msgs[0]
     parsed_msgs = parsed_msgs[1:]
     assert (input_msg[MSG_ID] == BIND_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
     msg += Two_Msg_BindComplete_Serialize()
 
-    # Munch Describe message from input (input 'D', output 'T') 
+    # ***  Munch Describe message from input, output row description message (input 'D', output 'T') 
     assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
     input_msg = parsed_msgs[0]
     parsed_msgs = parsed_msgs[1:]
     assert (input_msg[MSG_ID] == DESCRIBE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
 
     cols_desc = {}
-    if is_pg_catalog_msg(query) :        
-        logging.info ("Got initial PBI type query\n")         
+    if is_catalog_query:        
+        # logging.info ("Got initial PBI type query\n")         
         cols_desc  = prepare_pg_catalog_cols_desc(query)
-        cols_value = prepare_pg_catalog_cols_value(query)
+        cols_values = prepare_pg_catalog_cols_value(query)
 
     msg += T_Msg_RowDescription_Serialize(cols_desc)
 
-    # Munch Execution message from input (input 'E', output: a lot of 'D's) 
+    # ***  Munch Execution message from input, output Data messages (input 'E', output: a lot of 'D's) 
     assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
     input_msg = parsed_msgs[0]
     parsed_msgs = parsed_msgs[1:]
     assert (input_msg[MSG_ID] == EXECUTE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
 
+    if not is_catalog_query: 
+        logging.info ("Recieved query :\n" + (query.decode("utf-8")))
+        # Query backend database
+        query_output = execute_query(backend_db_con, query)
+        cols_desc    = query_output[BACKEND_QUERY__DESCRIPTION]
+        cols_values  = query_output[BACKEND_QUERY__RESULT]
 
-        # msg += D_Msg_DataRow_Serialize(cols_desc, cols_values) 
+    for col_values in cols_values :
+        msg += D_Msg_DataRow_Serialize(cols_desc, col_values) 
 
-        # num_of_lines = len(result)
-        # msg += C_Msg_CommandComplete_Serialize('SELECT ' + str(num_of_lines)) 
+    #  ***  Prepare command complete message
+    num_of_lines = len(cols_values)
+    msg += C_Msg_CommandComplete_Serialize('SELECT ' + str(num_of_lines)) 
 
-    # # Query backend database
-    # result = execute_query(backend_db_con, query)
-
-    # # Serialize Response    
-    # send_msg = T_Msg_RowDescription_Serialize(['xint']) 
-
-    # for row_val in result :
-    #     send_msg += D_Msg_DataRow_Serialize(row_val) 
-
-
-    # send_msg += C_Msg_CommandComplete_Serialize('SELECT 3') 
-    # send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
-
-    # Next state - Query state, be prepared for the next query
-    # new_state = QUERY_STATE
-
+    # *** Prepare ready for query message, if finished munching the input message
+    if len(parsed_msgs) == 0 :
+        send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+        is_tx_msg = True
+        
     res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
-    res[STATE_MACHINE__OUTPUT_MSG] = output_msg + msg
-    res[STATE_MACHINE__IS_TX_MSG] = False
+    res[STATE_MACHINE__OUTPUT_MSG]  = output_msg + msg
+    res[STATE_MACHINE__IS_TX_MSG]   = is_tx_msg
 
     # Next state - Query state, be prepared for the next query
     res[STATE_MACHINE__NEW_STATE] = QUERY_STATE
 
-    # TX Response
-    # return (new_state, send_msg)
     return res
 
 
