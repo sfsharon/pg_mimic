@@ -232,10 +232,13 @@ Contains three queries :
 
 """
 
-# PBI_MSGS = [PBI_STARTUP_MSG_1, PBI_PASSWORD_MSG_2, PBI_PBDES_MSG_3]
+# PBI MSGS 
+# -------------
+# [PBI_STARTUP_MSG_1, PBI_PASSWORD_MSG_2, PBI_PBDES_MSG_3]
 PBI_MSGS = [PBI_STARTUP_MSG_1, PBI_PASSWORD_MSG_2, PBI_PBDE_x3_S]
 
-# psql sequence of messages
+# PSQL MSGS 
+# -------------
 PSQL_STARTUP_MSG_1 = b'\x00\x00\x00W\x00\x03\x00\x00user\x00postgres\x00database\x00postgres\x00application_name\x00psql\x00client_encoding\x00WIN1252\x00\x00'
 PSQL_PASSWD_MSG_2= b'p\x00\x00\x00(md529c7bf08e60cbef8e4d36c5abc01f638\x00'
 PSQL_SIMPLE_QUERY_MSG_3 = b'Q\x00\x00\x00\x19select * from test1;\x00'

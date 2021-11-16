@@ -194,8 +194,7 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
     input_msg = parsed_msgs[0]
     res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs[1:]
-
-    assert (input_msg[MSG_ID] == QUERY_MSG_ID), f"Received a wrong message ID {msg[MSG_ID]}"
+    assert (input_msg[MSG_ID] == QUERY_MSG_ID), f"Received a wrong message ID: {msg[MSG_ID]} insteadt of {QUERY_MSG_ID}"
     
     query = input_msg[QUERY_MSG__SIMPLE_QUERY]
 
@@ -213,7 +212,6 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
 
     num_of_lines = len(result)
 
-    # TODO : Update C message string dynamically
     msg += C_Msg_CommandComplete_Serialize('SELECT ' + str(num_of_lines)) 
 
     msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
@@ -235,26 +233,53 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     """
     logging.info("Entering parse_query_state_transition")
 
+    # Initialization
+    res = {}
+    msg = bytes('', "utf-8")
+
+    # Munch Parse message from input (input 'P', output '1'), and get query stinrg
     assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
     input_msg = parsed_msgs[0]
-    res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs[1:]
-
+    parsed_msgs = parsed_msgs[1:]
     assert (input_msg[MSG_ID] == PARSE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
-
-    res = {}
-    
-    send_msg = bytes('', "utf-8")
 
     query = input_msg[PARSE_MSG__QUERY]
 
     logging.info ("Recieved query :\n" + (query.decode("utf-8")))
+    msg += One_Msg_ParseComplete_Serialize()
+    
+    # Munch Bind message from input (input 'B', output '2') 
+    assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
+    input_msg = parsed_msgs[0]
+    parsed_msgs = parsed_msgs[1:]
+    assert (input_msg[MSG_ID] == BIND_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
+    msg += Two_Msg_BindComplete_Serialize()
 
-    if query == PBI_INIT_TYPE_QUERY :
-        logging.info ("Got initial PBI type query\n")
-        send_msg += One_Msg_ParseComplete_Serialize()
-        send_msg += Two_Msg_ParseComplete_Serialize()
-        send_msg += T_Msg_RowDescription_Serialize(['nspname', 'typname', 'oid', 'typrelid', 'typbasetype', 'type', 'elemoid', 'ord'])
+    # Munch Describe message from input (input 'D', output 'T') 
+    assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
+    input_msg = parsed_msgs[0]
+    parsed_msgs = parsed_msgs[1:]
+    assert (input_msg[MSG_ID] == DESCRIBE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
 
+    cols_desc = {}
+    if is_pg_catalog_msg(query) :        
+        logging.info ("Got initial PBI type query\n")         
+        cols_desc  = prepare_pg_catalog_cols_desc(query)
+        cols_value = prepare_pg_catalog_cols_value(query)
+
+    msg += T_Msg_RowDescription_Serialize(cols_desc)
+
+    # Munch Execution message from input (input 'E', output: a lot of 'D's) 
+    assert len(parsed_msgs) > 0, "Receied an empty input parsed messages"
+    input_msg = parsed_msgs[0]
+    parsed_msgs = parsed_msgs[1:]
+    assert (input_msg[MSG_ID] == EXECUTE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
+
+
+        # msg += D_Msg_DataRow_Serialize(cols_desc, cols_values) 
+
+        # num_of_lines = len(result)
+        # msg += C_Msg_CommandComplete_Serialize('SELECT ' + str(num_of_lines)) 
 
     # # Query backend database
     # result = execute_query(backend_db_con, query)
@@ -272,7 +297,12 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     # Next state - Query state, be prepared for the next query
     # new_state = QUERY_STATE
 
+    res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
+    res[STATE_MACHINE__OUTPUT_MSG] = output_msg + msg
     res[STATE_MACHINE__IS_TX_MSG] = False
+
+    # Next state - Query state, be prepared for the next query
+    res[STATE_MACHINE__NEW_STATE] = QUERY_STATE
 
     # TX Response
     # return (new_state, send_msg)

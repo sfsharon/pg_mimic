@@ -64,12 +64,15 @@ COL_DESC__TYPE   = "col_desc_type"
 COL_DESC__FORMAT = "col_desc_format"
 COL_DESC__LENGTH = "col_desc_length"
 
-# Column formats 
+# Postgres Column formats 
 COL_FORMAT_TEXT    = 0
 COL_FORMAT_BINARY  = 1
 
-# Column types 
+# Postgres Column types 
 COL_INT_TYPE_OID = 23
+COL_LONG_INT_TYPE_OID = 26
+COL_TEXT_TYPE_OID = 19
+COL_CHAR_TYPE_OID = 18
 
 # Misc
 NULL_TERMINATOR = b'\x00'
@@ -78,6 +81,34 @@ PBI_INIT_TYPE_QUERY = b"\r\n/*** Load all supported types ***/\r\nSELECT ns.nspn
 # ***********************************************
 # * Utility functions
 # ***********************************************
+def prepare_cols_desc(cols_name, cols_type, cols_length, cols_format):
+    """! Prepare the columns description object, needed by the T message
+    @param cols_name
+    @param cols_type
+    @param cols_length
+    @param cols_format
+
+    @return cols_desc
+    """
+    from sqream_backend import SQREAM_TYPE_INT 
+
+    num_of_cols = len(cols_name)
+
+    assert num_of_cols == len(cols_type) == len(cols_length) == len(cols_format), "Mismatch in number columns description attributes"
+
+    cols_desc = []
+    for index in range(num_of_cols) :
+        # Translate SQream type to Postgres type
+        if cols_type[index] == SQREAM_TYPE_INT :
+            cols_type[index] = COL_INT_TYPE_OID
+        
+        cols_desc.append({COL_DESC__NAME   : cols_name[index],
+                          COL_DESC__TYPE   : cols_type[index],
+                          COL_DESC__FORMAT : cols_format[index],
+                          COL_DESC__LENGTH : cols_length[index]})
+
+    return cols_desc
+
 def utility_int_to_text(val) :
     """! Translate a string to an ordinal string, little endian
     @param val integer to translate
@@ -101,9 +132,41 @@ def is_password_msg(msg):
 
     return True if msg[MSG_ID] == PASSWORD_MSG_ID else False
 
+def is_pg_catalog_msg(query):
+    """!  Identify PowerBI Postgres catalog messages
+    @param query: Input string query
+
+    @return Boolean: True if catalog message, False otherwise.
+    """
+    return query == PBI_INIT_TYPE_QUERY
+
+def prepare_pg_catalog_cols_desc(query):
+    """! Prepare column description to a PG catalog query
+    """
+
+    if query == PBI_INIT_TYPE_QUERY :
+        cols_name   = ['nspname',                 'typname',                'oid',                   'typrelid',                     'typbasetype',                    'type',                'elemoid',                    'ord']        
+        cols_type   = [COL_TEXT_TYPE_OID,         COL_TEXT_TYPE_OID,        COL_LONG_INT_TYPE_OID,    COL_LONG_INT_TYPE_OID,         COL_LONG_INT_TYPE_OID,            COL_CHAR_TYPE_OID,     COL_LONG_INT_TYPE_OID,        COL_INT_TYPE_OID]
+        cols_length = [64,                        64,                       4,                        4,                             4,                                1,                      4,                           4]
+        cols_format = [COL_FORMAT_TEXT,           COL_FORMAT_TEXT,          COL_FORMAT_TEXT,          COL_FORMAT_TEXT,               COL_FORMAT_TEXT,                  COL_FORMAT_TEXT,        COL_FORMAT_TEXT,             COL_FORMAT_TEXT]
+        cols_desc = prepare_cols_desc(cols_name, cols_type, cols_length, cols_format)
+        return cols_desc
+    else :
+        raise ValueError('Received unknown pg catalog query ')
+
+def prepare_pg_catalog_cols_value(query) :
+    """! Prepare PG Catalog column values to a PG catalog query
+    """
+
+    if query == PBI_INIT_TYPE_QUERY :
+        cols_value = [['pg_catalog', 'float8', '701', '0', '0', 'b', '0', '0'],
+                      ['pg_catalog', 'tid'   , '27',  '0', '0', 'b', '0', '0']]
+        return cols_value
+    else :
+        raise ValueError('Received unknown pg catalog query ')
 
 
-def tokenization(data, is_expecting_startup_msg) :
+def tokenization(data, is_expecting_startup_msg):
     """
     Tokenize a stream of bytes into a list of tuples with two values :
         [(Header Msg ID size of byte, Msg payload), 
@@ -478,7 +541,7 @@ def S_Msg_ParameterStatus_Serialize(param_name, param_value) :
 
 def D_Msg_DataRow_Serialize(cols_desc, cols_values) :
     """! Serialize a data col section.
-    @param cols_desc description of columns - Column name, Column type
+    @param cols_desc description of columns - Column name, type, format and length
     @param cols_values list of column values
 
     @return packed bytes of column values (D message)         
@@ -505,7 +568,7 @@ def D_Msg_DataRow_Serialize(cols_desc, cols_values) :
     HEADERFORMAT = "!ih"        # Length / Field count
     COLDESC_FORMAT = "!i"       # Column length
 
-    rVal = bytes('', "utf-8")
+    msg = bytes('', "utf-8")
 
     assert len(cols_values) == len(cols_desc), "Number of columns values and number of columns types do not match"
 
@@ -519,13 +582,13 @@ def D_Msg_DataRow_Serialize(cols_desc, cols_values) :
         else :
             raise ValueError('Unsupported serialize type : ', cols_desc[index])
 
-        rVal += struct.pack(COLDESC_FORMAT, len(col_value_string)) + col_value_string
+        msg += struct.pack(COLDESC_FORMAT, len(col_value_string)) + col_value_string
 
-    Length = struct.calcsize(HEADERFORMAT) + len(rVal)
+    Length = struct.calcsize(HEADERFORMAT) + len(msg)
 
-    rVal = DATA_COLS_MSG_ID + struct.pack(HEADERFORMAT, Length, fields_count) + rVal
+    msg = DATA_COLS_MSG_ID + struct.pack(HEADERFORMAT, Length, fields_count) + msg
 
-    return rVal
+    return msg
 
 
 def T_Msg_RowDescription_Serialize(cols_desc):
@@ -574,7 +637,7 @@ def T_Msg_RowDescription_Serialize(cols_desc):
         HEADERFORMAT = "!ih"            # Length / Field count
         ROWDESC_FORMAT = "!ihihih"      # Table OID / Column index / Type OID / Column length / Type modifier / Format
 
-        rVal = bytes('', "utf-8")
+        msg = bytes('', "utf-8")
 
         field_count = len(cols_desc) # len(row_names)
 
@@ -587,7 +650,7 @@ def T_Msg_RowDescription_Serialize(cols_desc):
             Column_length = col_desc[COL_DESC__LENGTH] 
             Type_modifier = -1                         # Hard coded value. 
             Format = col_desc[COL_DESC__FORMAT] 
-            rVal += null_term_row_name + struct.pack(ROWDESC_FORMAT, 
+            msg += null_term_row_name + struct.pack(ROWDESC_FORMAT, 
                                                     Table_OID, 
                                                     Column_index, 
                                                     Type_OID, 
@@ -595,11 +658,11 @@ def T_Msg_RowDescription_Serialize(cols_desc):
                                                     Type_modifier, 
                                                     Format)
 
-        Length = struct.calcsize(HEADERFORMAT) + len(rVal)
+        Length = struct.calcsize(HEADERFORMAT) + len(msg)
 
-        rVal = ROW_DESC_MSG_ID + struct.pack(HEADERFORMAT, Length, field_count) + rVal
+        msg = ROW_DESC_MSG_ID + struct.pack(HEADERFORMAT, Length, field_count) + msg
 
-        return rVal
+        return msg
 
 def C_Msg_CommandComplete_Serialize(tag_name) :
     """! Serialize a command complete section.
@@ -640,9 +703,9 @@ def C_Msg_CommandComplete_Serialize(tag_name) :
 
     Length = struct.calcsize(HEADERFORMAT) + len(tag_name_null_term)        
 
-    rVal = CMD_COMPLETE_MSG_ID + struct.pack(HEADERFORMAT, Length) + tag_name_null_term
+    msg = CMD_COMPLETE_MSG_ID + struct.pack(HEADERFORMAT, Length) + tag_name_null_term
 
-    return rVal
+    return msg
 
 def R_Msg_AuthRequest_Serialize():
     """
@@ -714,9 +777,9 @@ def Z_Msg_ReadyForQuery_Serialize(server_status) :
 
     Length = struct.calcsize(HEADERFORMAT) + len(server_status)
 
-    rVal = READY_FOR_QUERY_MSG_ID + struct.pack(HEADERFORMAT, Length) + READY_FOR_QUERY_SERVER_STATUS_IDLE
+    msg = READY_FOR_QUERY_MSG_ID + struct.pack(HEADERFORMAT, Length) + READY_FOR_QUERY_SERVER_STATUS_IDLE
 
-    return rVal
+    return msg
 
 
 def One_Msg_ParseComplete_Serialize() :
@@ -737,9 +800,9 @@ def One_Msg_ParseComplete_Serialize() :
 
     Length = struct.calcsize(HEADERFORMAT) 
 
-    rVal = PARSE_COMPLETE_MSG_ID + struct.pack(HEADERFORMAT, Length) 
+    msg = PARSE_COMPLETE_MSG_ID + struct.pack(HEADERFORMAT, Length) 
 
-    return rVal
+    return msg
 
 
 def Two_Msg_BindComplete_Serialize() :
@@ -760,9 +823,9 @@ def Two_Msg_BindComplete_Serialize() :
 
     Length = struct.calcsize(HEADERFORMAT) 
 
-    rVal = BIND_COMPLETE_MSG_ID + struct.pack(HEADERFORMAT, Length) 
+    msg = BIND_COMPLETE_MSG_ID + struct.pack(HEADERFORMAT, Length) 
 
-    return rVal
+    return msg
 
 # *****************************************************
 # * Unit Testing

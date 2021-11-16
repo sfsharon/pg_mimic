@@ -43,26 +43,17 @@ def execute_query (connection, query) :
 
     # Get column type
     cols_type   = [metadata[0] for metadata in cur.col_type_tups]
-
     cols_length = [metadata[1] for metadata in cur.col_type_tups]
     cols_name   = [metadata[0] for metadata in cur.description]
+    
     num_of_cols = len(cols_type)
 
-    assert len(cols_type) == len(cols_length) == len(cols_name), "Wrong number of column attributes"
+    cols_format = [COL_FORMAT_TEXT for i in range(num_of_cols)] # Hard coded - All columns are in Text format
 
-    data_format = COL_FORMAT_TEXT # Hardcoded text format
-    cols_desc = []
-    for index in range(num_of_cols) :
-        # Translate type to Postgres value
-        if cols_type[index] == SQREAM_TYPE_INT :
-            col_type = COL_INT_TYPE_OID
-        else :
-            raise ValueError("Received unsupported column type ", cols_type[index])
-        
-        cols_desc.append({COL_DESC__NAME   : cols_name[index],
-                          COL_DESC__TYPE   : col_type,
-                          COL_DESC__FORMAT : data_format,
-                          COL_DESC__LENGTH : cols_length[index]})
+    assert num_of_cols == len(cols_type) == len(cols_length) == len(cols_name), "Wrong number of column attributes"
+
+    cols_desc = prepare_cols_desc(cols_name, cols_type, cols_length, cols_format)
+
     
     return {BACKEND_QUERY__DESCRIPTION : cols_desc,
             BACKEND_QUERY__RESULT      : result}
