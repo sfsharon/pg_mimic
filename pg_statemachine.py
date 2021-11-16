@@ -167,16 +167,21 @@ def query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     # Do not "munch" on the parsed_msgs
     res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
 
+    is_tx_msg = False
+
     # Update logic
     if input_msg[MSG_ID] == QUERY_MSG_ID :        
-        res[STATE_MACHINE__NEW_STATE] = SIMPLE_QUERY_STATE # new_state = SIMPLE_QUERY_STATE
+        res[STATE_MACHINE__NEW_STATE] = SIMPLE_QUERY_STATE 
     elif input_msg[MSG_ID] == PARSE_MSG_ID :
-        res[STATE_MACHINE__NEW_STATE] = PARSE_QUERY_STATE# new_state = PARSE_QUERY_STATE
+        res[STATE_MACHINE__NEW_STATE] = PARSE_QUERY_STATE
+    elif input_msg[MSG_ID] == SYNC_MSG_ID :
+        res[STATE_MACHINE__NEW_STATE] = QUERY_STATE
+        is_tx_msg = True
     else :
-        raise ValueError('Received unknown message ID : ', msg[MSG_ID])
+        raise ValueError('Received unknown message ID : ', input_msg[MSG_ID])
 
     res[STATE_MACHINE__OUTPUT_MSG] = output_msg
-    res[STATE_MACHINE__IS_TX_MSG] = False
+    res[STATE_MACHINE__IS_TX_MSG] = is_tx_msg
 
     return res 
 
