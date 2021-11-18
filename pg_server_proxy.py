@@ -12,10 +12,10 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 16/11/2021 2323
+#  TODO 18/11/2021 1900
   1. Verify psql client still works
   2. PBI Messages : 
-    2.1 Complete writing the Data frames in the first PBI catalog query (all 154 lines of them)
+    2.1 Complete writing the Data frames of SQream tables in the first PBI catalog query 
     2.2 Complete the rest of the PBI messages
 """
 
