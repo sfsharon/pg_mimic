@@ -117,7 +117,7 @@ def password_state_transition(parsed_msgs, output_msg, backend_db_con) :
 
     return res
 
-def patameter_status_state_transition(parsed_msgs, output_msg, backend_db_con) :
+def init_param_state_transition(parsed_msgs, output_msg, backend_db_con) :
     """! Builds parameter status message during intialization phase.
          Does not take into account the password (the msg parameter)
     @param msg password 
@@ -125,7 +125,7 @@ def patameter_status_state_transition(parsed_msgs, output_msg, backend_db_con) :
     @return parameter status message
     
     """
-    logging.info("Entering patameter_status_state_transition")
+    logging.info("Entering init_param_state_transition")
 
     res = {}
 
@@ -209,27 +209,37 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     
     query = input_msg[QUERY_MSG__SIMPLE_QUERY]
 
-    # Query backend database
-    query_output = execute_query(backend_db_con, query)
+    is_DISCARD_ALL_msg = True if query == PG_DISCARD_ALL_QUERY else False
 
-    cols_desc = query_output[BACKEND_QUERY__DESCRIPTION]
-    cols_values    = query_output[BACKEND_QUERY__RESULT]
+    if is_DISCARD_ALL_msg :
+        # Do nothing for 'DISCAR ALL' query
+        msg =  S_Msg_ParameterStatus_Serialize (str.encode('is_superuser'), str.encode('on'))
+        msg += S_Msg_ParameterStatus_Serialize (str.encode('session_authorization'), str.encode('postgres'))
+        msg += C_Msg_CommandComplete_Serialize(PG_DISCARD_ALL_STRING) 
+        res[STATE_MACHINE__IS_TX_MSG] = False
+    else :  # Regular Query
+        # Query backend database
+        query_output = execute_query(backend_db_con, query)
 
-    # Serialize Response
-    msg = T_Msg_RowDescription_Serialize(cols_desc) 
+        cols_desc   = query_output[BACKEND_QUERY__DESCRIPTION]
+        cols_values = query_output[BACKEND_QUERY__RESULT]
 
-    for col_values in cols_values :
-        msg += D_Msg_DataRow_Serialize(cols_desc, col_values) 
+        # Serialize Response
+        msg = T_Msg_RowDescription_Serialize(cols_desc) 
 
-    num_of_lines = len(cols_values)
+        for col_values in cols_values :
+            msg += D_Msg_DataRow_Serialize(cols_desc, col_values) 
 
-    msg += C_Msg_CommandComplete_Serialize('SELECT ' + str(num_of_lines)) 
+        num_of_lines = len(cols_values)
 
-    msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+        msg += C_Msg_CommandComplete_Serialize('SELECT ' + str(num_of_lines)) 
+
+        msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+
+        res[STATE_MACHINE__IS_TX_MSG] = True
+
 
     res[STATE_MACHINE__OUTPUT_MSG] = output_msg + msg
-    res[STATE_MACHINE__IS_TX_MSG] = True
-
     # Next state - Query state, be prepared for the next query
     res[STATE_MACHINE__NEW_STATE] = QUERY_STATE
 
@@ -330,7 +340,7 @@ def CreatePGStateMachine() :
     pg_mimic = PG_StateMachine()
     pg_mimic.add_state(STARTUP_STATE, startup_transition)
     pg_mimic.add_state(PASSWORD_STATE, password_state_transition)
-    pg_mimic.add_state(PARAMETER_STATUS_STATE, patameter_status_state_transition)
+    pg_mimic.add_state(PARAMETER_STATUS_STATE, init_param_state_transition)
     pg_mimic.add_state(QUERY_STATE, query_state_transition)
     pg_mimic.add_state(SIMPLE_QUERY_STATE, simple_query_state_transition)
     pg_mimic.add_state(PARSE_QUERY_STATE, parse_query_state_transition)

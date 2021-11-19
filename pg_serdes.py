@@ -72,6 +72,7 @@ COL_FORMAT_BINARY  = 1
 COL_INT_TYPE_OID = 23
 COL_LONG_INT_TYPE_OID = 26
 COL_TEXT_TYPE_OID = 19
+COL_TEXT_TYPE_2_OID = 1043
 COL_CHAR_TYPE_OID = 18
 
 # Misc
@@ -80,6 +81,9 @@ PBI_CATALOG_SUPPORTED_TYPES_QUERY           = b"\r\n/*** Load all supported type
 PBI_CATALOG_FIELD_DEF_COMPOSITE_TYPES_QUERY = b"/*** Load field definitions for (free-standing) composite types ***/\r\nSELECT typ.oid, att.attname, att.atttypid\r\nFROM pg_type AS typ\r\nJOIN pg_namespace AS ns ON (ns.oid = typ.typnamespace)\r\nJOIN pg_class AS cls ON (cls.oid = typ.typrelid)\r\nJOIN pg_attribute AS att ON (att.attrelid = typ.typrelid)\r\nWHERE\r\n  (typ.typtype = 'c' AND cls.relkind='c') AND\r\n  attnum > 0 AND     /* Don't load system attributes */\r\n  NOT attisdropped\r\nORDER BY typ.oid, att.attnum\x00"
 PBI_CATALOG_ENUM_FIELDS_QUERY               = b'/*** Load enum fields ***/\r\nSELECT pg_type.oid, enumlabel\r\nFROM pg_enum\r\nJOIN pg_type ON pg_type.oid=enumtypid\r\nORDER BY oid, enumsortorder\x00'
 PBI_CATALOG_CHAR_SET_QUERY                  = b'select character_set_name from INFORMATION_SCHEMA.character_sets\x00'
+PBI_CATALOG_USER_TABLE_LIST_QUERY           = b"select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE\r\nfrom INFORMATION_SCHEMA.tables\r\nwhere TABLE_SCHEMA not in ('information_schema', 'pg_catalog')\r\norder by TABLE_SCHEMA, TABLE_NAME\x00"
+PG_DISCARD_ALL_QUERY                        = b'DISCARD ALL\x00'
+PG_DISCARD_ALL_STRING                       = 'DISCARD ALL'
 
 # ***********************************************
 # * Utility functions
@@ -153,9 +157,11 @@ def is_pg_catalog_msg(query):
         logging.info("Received PG Catalog Enum Fields query")
         is_pg_catalog = True
     elif query == PBI_CATALOG_CHAR_SET_QUERY :
-        logging.info("Received PG Catalog Character set query")
+        logging.info("Received PG Catalog Character Set query")
         is_pg_catalog = True
-        
+    elif query == PBI_CATALOG_USER_TABLE_LIST_QUERY :
+        logging.info("Received PG Catalog Table List query")
+        is_pg_catalog = True
     return is_pg_catalog
 
 def prepare_pg_catalog_cols_desc(query):
@@ -184,6 +190,11 @@ def prepare_pg_catalog_cols_desc(query):
         cols_type   = [COL_TEXT_TYPE_OID]
         cols_length = [64]
         cols_format = [COL_FORMAT_BINARY]
+    elif query == PBI_CATALOG_USER_TABLE_LIST_QUERY :
+        cols_name   = ['table_schema',              'table_name',               'table_type']
+        cols_type   = [COL_TEXT_TYPE_OID,           COL_TEXT_TYPE_OID,          COL_TEXT_TYPE_2_OID]
+        cols_length = [64,                          64,                         -1]
+        cols_format = [COL_FORMAT_BINARY,           COL_FORMAT_BINARY,          COL_FORMAT_BINARY]
 
 
     else :
@@ -350,11 +361,10 @@ def prepare_pg_catalog_cols_value(query) :
                         ['information_schema' , '_character_data'  , 13143 ,        0 ,           0 , 'a'    ,   13144 ,   3],
                         ['information_schema' , '_sql_identifier'  , 13145 ,        0 ,           0 , 'a'    ,   13146 ,   3],
                         ['information_schema' , '_time_stamp'      , 13150 ,        0 ,           0 , 'a'    ,   13151 ,   3],
-                        ['information_schema' , '_yes_or_no'       , 13152 ,        0 ,           0 , 'a'    ,   13153 ,   3],
+                        ['information_schema' , '_yes_or_no'       , 13152 ,        0 ,           0 , 'a'    ,   13153 ,   3]]
 
                         # TODO - Replace with dynamic query to backend DB
-                        ['public'             , '_t1'            , 49166 ,        0 ,           0 , 'a'    ,   49167 ,   3]]
-
+                        # ['public'             , '_t1'            , 49166 ,        0 ,           0 , 'a'    ,   49167 ,   3]]
         return cols_values 
     elif query == PBI_CATALOG_FIELD_DEF_COMPOSITE_TYPES_QUERY :
         return empty_cols_values
@@ -363,6 +373,12 @@ def prepare_pg_catalog_cols_value(query) :
     elif query == PBI_CATALOG_CHAR_SET_QUERY :
         cols_values = [# character_set_name
                         ['\x55\x54\x46\x38' ]]          # Value : UTF8
+        return cols_values 
+    elif query == PBI_CATALOG_USER_TABLE_LIST_QUERY :   # TODO : To be replaced with actual call to sqream_catalog.tables query
+        cols_values = [
+                        #'table_schema',        'table_name',     'table_type']
+                        ['public'         ,     't1'           ,   'BASE TABLE']
+        ]
         return cols_values 
     
     else :

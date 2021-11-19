@@ -12,12 +12,11 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 18/11/2021 1900
+#  TODO 19/11/2021 1900
   1. Verify psql client still works
   2. PBI Messages : 
-    2.1 Why isn't PG Mimick sending S message at the enf of the big query ?  
-    2.2 Complete writing the Data frames of SQream tables in the first PBI catalog query 
-    2.3 Complete the rest of the PBI messages
+    2.1 Init phase : Dynamically show tables  sqream_catalog.tables 
+    2.3 Wirk on Show tables and Show columns phases
 """
 
 

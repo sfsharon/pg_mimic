@@ -20,6 +20,63 @@ import socket
 PBI_STARTUP_MSG_1 = b'\x00\x00\x00>\x00\x03\x00\x00user\x00postgres\x00client_encoding\x00UTF8\x00database\x00postgres\x00\x00'
 PBI_PASSWORD_MSG_2 = b'p\x00\x00\x00(md5b400a301a6904ae12fc76a8fff168215\x00'
 PBI_PBDES_MSG_3 = b"P\x00\x00\x00\xb6\x00select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE\r\nfrom INFORMATION_SCHEMA.tables\r\nwhere TABLE_SCHEMA not in ('information_schema', 'pg_catalog')\r\norder by TABLE_SCHEMA, TABLE_NAME\x00\x00\x00B\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01D\x00\x00\x00\x06P\x00E\x00\x00\x00\t\x00\x00\x00\x00\x00S\x00\x00\x00\x04"
+
+"""
+PBI_PBDE_x3_S Contains three PBDE queries :
+1. 
+    /*** Load all supported types ***/
+    SELECT ns.nspname, a.typname, a.oid, a.typrelid, a.typbasetype,
+    CASE WHEN pg_proc.proname='array_recv' THEN 'a' ELSE a.typtype END AS type,
+    CASE
+    WHEN pg_proc.proname='array_recv' THEN a.typelem
+    WHEN a.typtype='r' THEN rngsubtype
+    ELSE 0
+    END AS elemoid,
+    CASE
+    WHEN pg_proc.proname IN ('array_recv','oidvectorrecv') THEN 3    /* Arrays last */
+    WHEN a.typtype='r' THEN 2                                        /* Ranges before */
+    WHEN a.typtype='d' THEN 1                                        /* Domains before */
+    ELSE 0                                                           /* Base types first */
+    END AS ord
+    FROM pg_type AS a
+    JOIN pg_namespace AS ns ON (ns.oid = a.typnamespace)
+    JOIN pg_proc ON pg_proc.oid = a.typreceive
+    LEFT OUTER JOIN pg_class AS cls ON (cls.oid = a.typrelid)
+    LEFT OUTER JOIN pg_type AS b ON (b.oid = a.typelem)
+    LEFT OUTER JOIN pg_class AS elemcls ON (elemcls.oid = b.typrelid)
+    LEFT OUTER JOIN pg_range ON (pg_range.rngtypid = a.oid) 
+    WHERE
+    a.typtype IN ('b', 'r', 'e', 'd') OR         /* Base, range, enum, domain */
+    (a.typtype = 'c' AND cls.relkind='c') OR /* User-defined free-standing composites (not table composites) by default */
+    (pg_proc.proname='array_recv' AND (
+        b.typtype IN ('b', 'r', 'e', 'd') OR       /* Array of base, range, enum, domain */
+        (b.typtype = 'p' AND b.typname IN ('record', 'void')) OR /* Arrays of special supported pseudo-types */
+        (b.typtype = 'c' AND elemcls.relkind='c')  /* Array of user-defined free-standing composites (not table composites) */
+    )) OR
+    (a.typtype = 'p' AND a.typname IN ('record', 'void'))  /* Some special supported pseudo-types */
+    ORDER BY ord
+
+2. 
+    /*** Load field definitions for (free-standing) composite types ***/
+    SELECT typ.oid, att.attname, att.atttypid
+    FROM pg_type AS typ
+    JOIN pg_namespace AS ns ON (ns.oid = typ.typnamespace)
+    JOIN pg_class AS cls ON (cls.oid = typ.typrelid)
+    JOIN pg_attribute AS att ON (att.attrelid = typ.typrelid)
+    WHERE
+    (typ.typtype = 'c' AND cls.relkind='c') AND
+    attnum > 0 AND     /* Don't load system attributes */
+    NOT attisdropped
+    ORDER BY typ.oid, att.attnum
+
+3. 
+    /*** Load enum fields ***/
+    SELECT pg_type.oid, enumlabel
+    FROM pg_enum
+    JOIN pg_type ON pg_type.oid=enumtypid
+    ORDER BY oid, enumsortorder
+
+"""
 PBI_PBDE_x3_S = b"\x50\x00\x00\x06" \
 b"\xc0\x00\x0d\x0a\x2f\x2a\x2a\x2a\x20\x4c\x6f\x61\x64\x20\x61\x6c" \
 b"\x6c\x20\x73\x75\x70\x70\x6f\x72\x74\x65\x64\x20\x74\x79\x70\x65" \
@@ -176,64 +233,7 @@ b"\x01\x00\x00\x44\x00\x00\x00\x06\x50\x00\x45\x00\x00\x00\x09\x00" \
 b"\x00\x00\x00\x00\x53\x00\x00\x00\x04"
 
 """
-Contains three queries :
-1. 
-    /*** Load all supported types ***/
-    SELECT ns.nspname, a.typname, a.oid, a.typrelid, a.typbasetype,
-    CASE WHEN pg_proc.proname='array_recv' THEN 'a' ELSE a.typtype END AS type,
-    CASE
-    WHEN pg_proc.proname='array_recv' THEN a.typelem
-    WHEN a.typtype='r' THEN rngsubtype
-    ELSE 0
-    END AS elemoid,
-    CASE
-    WHEN pg_proc.proname IN ('array_recv','oidvectorrecv') THEN 3    /* Arrays last */
-    WHEN a.typtype='r' THEN 2                                        /* Ranges before */
-    WHEN a.typtype='d' THEN 1                                        /* Domains before */
-    ELSE 0                                                           /* Base types first */
-    END AS ord
-    FROM pg_type AS a
-    JOIN pg_namespace AS ns ON (ns.oid = a.typnamespace)
-    JOIN pg_proc ON pg_proc.oid = a.typreceive
-    LEFT OUTER JOIN pg_class AS cls ON (cls.oid = a.typrelid)
-    LEFT OUTER JOIN pg_type AS b ON (b.oid = a.typelem)
-    LEFT OUTER JOIN pg_class AS elemcls ON (elemcls.oid = b.typrelid)
-    LEFT OUTER JOIN pg_range ON (pg_range.rngtypid = a.oid) 
-    WHERE
-    a.typtype IN ('b', 'r', 'e', 'd') OR         /* Base, range, enum, domain */
-    (a.typtype = 'c' AND cls.relkind='c') OR /* User-defined free-standing composites (not table composites) by default */
-    (pg_proc.proname='array_recv' AND (
-        b.typtype IN ('b', 'r', 'e', 'd') OR       /* Array of base, range, enum, domain */
-        (b.typtype = 'p' AND b.typname IN ('record', 'void')) OR /* Arrays of special supported pseudo-types */
-        (b.typtype = 'c' AND elemcls.relkind='c')  /* Array of user-defined free-standing composites (not table composites) */
-    )) OR
-    (a.typtype = 'p' AND a.typname IN ('record', 'void'))  /* Some special supported pseudo-types */
-    ORDER BY ord
-
-2. 
-    /*** Load field definitions for (free-standing) composite types ***/
-    SELECT typ.oid, att.attname, att.atttypid
-    FROM pg_type AS typ
-    JOIN pg_namespace AS ns ON (ns.oid = typ.typnamespace)
-    JOIN pg_class AS cls ON (cls.oid = typ.typrelid)
-    JOIN pg_attribute AS att ON (att.attrelid = typ.typrelid)
-    WHERE
-    (typ.typtype = 'c' AND cls.relkind='c') AND
-    attnum > 0 AND     /* Don't load system attributes */
-    NOT attisdropped
-    ORDER BY typ.oid, att.attnum
-
-3. 
-    /*** Load enum fields ***/
-    SELECT pg_type.oid, enumlabel
-    FROM pg_enum
-    JOIN pg_type ON pg_type.oid=enumtypid
-    ORDER BY oid, enumsortorder
-
-"""
-
-"""
-Contains one query : 'select character_set_name from INFORMATION_SCHEMA.character_sets'
+PBI_PBDES_CHARSET_NAME_MSG_4 Contains one query : 'select character_set_name from INFORMATION_SCHEMA.character_sets'
 """
 PBI_PBDES_CHARSET_NAME_MSG_4 =  \
                     b"\x50\x00\x00\x00" \
@@ -245,11 +245,40 @@ PBI_PBDES_CHARSET_NAME_MSG_4 =  \
                     b"\x00\x01\x00\x01\x44\x00\x00\x00\x06\x50\x00\x45\x00\x00\x00\x09" \
                     b"\x00\x00\x00\x00\x00\x53\x00\x00\x00\x04"
 
+"""
+PBI_TABLE_LIST_MSG_5 Contains :
+Simple Query (Q message) : "DISCARD ALL"
+PBDE Query :
+                select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
+                from INFORMATION_SCHEMA.tables
+                where TABLE_SCHEMA not in ('information_schema', 'pg_catalog')
+                order by TABLE_SCHEMA, TABLE_NAME
+"""
+PBI_TABLE_LIST_MSG_5 = \
+                b"\x51\x00\x00\x00" \
+                b"\x10\x44\x49\x53\x43\x41\x52\x44\x20\x41\x4c\x4c\x00\x50\x00\x00" \
+                b"\x00\xb6\x00\x73\x65\x6c\x65\x63\x74\x20\x54\x41\x42\x4c\x45\x5f" \
+                b"\x53\x43\x48\x45\x4d\x41\x2c\x20\x54\x41\x42\x4c\x45\x5f\x4e\x41" \
+                b"\x4d\x45\x2c\x20\x54\x41\x42\x4c\x45\x5f\x54\x59\x50\x45\x0d\x0a" \
+                b"\x66\x72\x6f\x6d\x20\x49\x4e\x46\x4f\x52\x4d\x41\x54\x49\x4f\x4e" \
+                b"\x5f\x53\x43\x48\x45\x4d\x41\x2e\x74\x61\x62\x6c\x65\x73\x0d\x0a" \
+                b"\x77\x68\x65\x72\x65\x20\x54\x41\x42\x4c\x45\x5f\x53\x43\x48\x45" \
+                b"\x4d\x41\x20\x6e\x6f\x74\x20\x69\x6e\x20\x28\x27\x69\x6e\x66\x6f" \
+                b"\x72\x6d\x61\x74\x69\x6f\x6e\x5f\x73\x63\x68\x65\x6d\x61\x27\x2c" \
+                b"\x20\x27\x70\x67\x5f\x63\x61\x74\x61\x6c\x6f\x67\x27\x29\x0d\x0a" \
+                b"\x6f\x72\x64\x65\x72\x20\x62\x79\x20\x54\x41\x42\x4c\x45\x5f\x53" \
+                b"\x43\x48\x45\x4d\x41\x2c\x20\x54\x41\x42\x4c\x45\x5f\x4e\x41\x4d" \
+                b"\x45\x00\x00\x00\x42\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00\x00" \
+                b"\x01\x00\x01\x44\x00\x00\x00\x06\x50\x00\x45\x00\x00\x00\x09\x00" \
+                b"\x00\x00\x00\x00\x53\x00\x00\x00\x04"
 
 # PBI MSGS 
 # -------------
-# [PBI_STARTUP_MSG_1, PBI_PASSWORD_MSG_2, PBI_PBDES_MSG_3]
-PBI_MSGS = [PBI_STARTUP_MSG_1, PBI_PASSWORD_MSG_2, PBI_PBDE_x3_S, PBI_PBDES_CHARSET_NAME_MSG_4]
+PBI_MSGS = [PBI_STARTUP_MSG_1, 
+            PBI_PASSWORD_MSG_2, 
+            PBI_PBDE_x3_S, 
+            PBI_PBDES_CHARSET_NAME_MSG_4,
+            PBI_TABLE_LIST_MSG_5]
 
 # PSQL MSGS 
 # -------------
