@@ -15,8 +15,9 @@ logging.basicConfig(level=logging.DEBUG)
 #  TODO 18/11/2021 1900
   1. Verify psql client still works
   2. PBI Messages : 
-    2.1 Complete writing the Data frames of SQream tables in the first PBI catalog query 
-    2.2 Complete the rest of the PBI messages
+    2.1 Why isn't PG Mimick sending S message at the enf of the big query ?  
+    2.2 Complete writing the Data frames of SQream tables in the first PBI catalog query 
+    2.3 Complete the rest of the PBI messages
 """
 
 

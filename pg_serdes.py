@@ -12,7 +12,7 @@ import struct
 # ***********************************************
 # * Constants
 # ***********************************************
-# Deserialize Message IDs 
+# Deserialize Message IDs (RX messages)
 STARTUP_MSG_ID = bytes('STARTUP', "utf-8")
 QUERY_MSG_ID = bytes('Q', "utf-8")
 PARSE_MSG_ID = bytes('P', "utf-8")
@@ -21,7 +21,7 @@ BIND_MSG_ID = bytes('B', "utf-8")
 DESCRIBE_MSG_ID = bytes('D', "utf-8")
 EXECUTE_MSG_ID = bytes('E', "utf-8")
 SYNC_MSG_ID = bytes('S', "utf-8")
-# Serialize Message IDs 
+# Serialize Message IDs (TX messages)
 PARAMETER_STATUS_MSG_ID = bytes('S', "utf-8")
 AUTHENTICATION_REQUEST_MSG_ID = bytes('R', "utf-8")
 READY_FOR_QUERY_MSG_ID = bytes('Z', "utf-8")
@@ -339,7 +339,10 @@ def prepare_pg_catalog_cols_value(query) :
                         ['information_schema' , '_character_data'  , 13143 ,        0 ,           0 , 'a'    ,   13144 ,   3],
                         ['information_schema' , '_sql_identifier'  , 13145 ,        0 ,           0 , 'a'    ,   13146 ,   3],
                         ['information_schema' , '_time_stamp'      , 13150 ,        0 ,           0 , 'a'    ,   13151 ,   3],
-                        ['information_schema' , '_yes_or_no'       , 13152 ,        0 ,           0 , 'a'    ,   13153 ,   3]]
+                        ['information_schema' , '_yes_or_no'       , 13152 ,        0 ,           0 , 'a'    ,   13153 ,   3],
+
+                        # TODO - Replace with dynamic query to backend DB
+                        ['public'             , '_t1'            , 49166 ,        0 ,           0 , 'a'    ,   49167 ,   3]]
 
         return cols_values 
     elif query == PBI_CATALOG_FIELD_DEF_COMPOSITE_TYPES_QUERY :
