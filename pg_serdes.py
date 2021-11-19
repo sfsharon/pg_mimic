@@ -79,6 +79,7 @@ NULL_TERMINATOR = b'\x00'
 PBI_CATALOG_SUPPORTED_TYPES_QUERY           = b"\r\n/*** Load all supported types ***/\r\nSELECT ns.nspname, a.typname, a.oid, a.typrelid, a.typbasetype,\r\nCASE WHEN pg_proc.proname='array_recv' THEN 'a' ELSE a.typtype END AS type,\r\nCASE\r\n  WHEN pg_proc.proname='array_recv' THEN a.typelem\r\n  WHEN a.typtype='r' THEN rngsubtype\r\n  ELSE 0\r\nEND AS elemoid,\r\nCASE\r\n  WHEN pg_proc.proname IN ('array_recv','oidvectorrecv') THEN 3    /* Arrays last */\r\n  WHEN a.typtype='r' THEN 2                                        /* Ranges before */\r\n  WHEN a.typtype='d' THEN 1                                        /* Domains before */\r\n  ELSE 0                                                           /* Base types first */\r\nEND AS ord\r\nFROM pg_type AS a\r\nJOIN pg_namespace AS ns ON (ns.oid = a.typnamespace)\r\nJOIN pg_proc ON pg_proc.oid = a.typreceive\r\nLEFT OUTER JOIN pg_class AS cls ON (cls.oid = a.typrelid)\r\nLEFT OUTER JOIN pg_type AS b ON (b.oid = a.typelem)\r\nLEFT OUTER JOIN pg_class AS elemcls ON (elemcls.oid = b.typrelid)\r\nLEFT OUTER JOIN pg_range ON (pg_range.rngtypid = a.oid) \r\nWHERE\r\n  a.typtype IN ('b', 'r', 'e', 'd') OR         /* Base, range, enum, domain */\r\n  (a.typtype = 'c' AND cls.relkind='c') OR /* User-defined free-standing composites (not table composites) by default */\r\n  (pg_proc.proname='array_recv' AND (\r\n    b.typtype IN ('b', 'r', 'e', 'd') OR       /* Array of base, range, enum, domain */\r\n    (b.typtype = 'p' AND b.typname IN ('record', 'void')) OR /* Arrays of special supported pseudo-types */\r\n    (b.typtype = 'c' AND elemcls.relkind='c')  /* Array of user-defined free-standing composites (not table composites) */\r\n  )) OR\r\n  (a.typtype = 'p' AND a.typname IN ('record', 'void'))  /* Some special supported pseudo-types */\r\nORDER BY ord\x00"
 PBI_CATALOG_FIELD_DEF_COMPOSITE_TYPES_QUERY = b"/*** Load field definitions for (free-standing) composite types ***/\r\nSELECT typ.oid, att.attname, att.atttypid\r\nFROM pg_type AS typ\r\nJOIN pg_namespace AS ns ON (ns.oid = typ.typnamespace)\r\nJOIN pg_class AS cls ON (cls.oid = typ.typrelid)\r\nJOIN pg_attribute AS att ON (att.attrelid = typ.typrelid)\r\nWHERE\r\n  (typ.typtype = 'c' AND cls.relkind='c') AND\r\n  attnum > 0 AND     /* Don't load system attributes */\r\n  NOT attisdropped\r\nORDER BY typ.oid, att.attnum\x00"
 PBI_CATALOG_ENUM_FIELDS_QUERY               = b'/*** Load enum fields ***/\r\nSELECT pg_type.oid, enumlabel\r\nFROM pg_enum\r\nJOIN pg_type ON pg_type.oid=enumtypid\r\nORDER BY oid, enumsortorder\x00'
+PBI_CATALOG_CHAR_SET_QUERY                  = b'select character_set_name from INFORMATION_SCHEMA.character_sets\x00'
 
 # ***********************************************
 # * Utility functions
@@ -143,15 +144,18 @@ def is_pg_catalog_msg(query):
     is_pg_catalog = False
 
     if query == PBI_CATALOG_SUPPORTED_TYPES_QUERY :
-        logging.info("*** Received PG Catalog Supported types query")
+        logging.info("Received PG Catalog Supported Types query")
         is_pg_catalog = True
     elif query == PBI_CATALOG_FIELD_DEF_COMPOSITE_TYPES_QUERY :
-        logging.info("*** Received PG Catalog field definition composite types query")
+        logging.info("Received PG Catalog Field Definition composite types query")
         is_pg_catalog = True
     elif query == PBI_CATALOG_ENUM_FIELDS_QUERY :
-        logging.info("*** Received PG Catalog enum fields query")
+        logging.info("Received PG Catalog Enum Fields query")
         is_pg_catalog = True
-
+    elif query == PBI_CATALOG_CHAR_SET_QUERY :
+        logging.info("Received PG Catalog Character set query")
+        is_pg_catalog = True
+        
     return is_pg_catalog
 
 def prepare_pg_catalog_cols_desc(query):
@@ -175,6 +179,13 @@ def prepare_pg_catalog_cols_desc(query):
         cols_type   = [COL_LONG_INT_TYPE_OID,      COL_TEXT_TYPE_OID]
         cols_length = [4,                          64]
         cols_format = [COL_FORMAT_TEXT,           COL_FORMAT_TEXT]
+    elif query == PBI_CATALOG_CHAR_SET_QUERY :
+        cols_name   = ['character_set_name']
+        cols_type   = [COL_TEXT_TYPE_OID]
+        cols_length = [64]
+        cols_format = [COL_FORMAT_BINARY]
+
+
     else :
         raise ValueError('Received unknown pg catalog query ')
 
@@ -349,6 +360,11 @@ def prepare_pg_catalog_cols_value(query) :
         return empty_cols_values
     elif query == PBI_CATALOG_ENUM_FIELDS_QUERY :
         return empty_cols_values
+    elif query == PBI_CATALOG_CHAR_SET_QUERY :
+        cols_values = [# character_set_name
+                        ['\x55\x54\x46\x38' ]]          # Value : UTF8
+        return cols_values 
+    
     else :
         raise ValueError('Received unknown pg catalog query ')
 

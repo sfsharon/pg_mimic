@@ -233,12 +233,10 @@ Contains three queries :
 """
 
 """
-Contains one query : select character_set_name from INFORMATION_SCHEMA.character_sets
+Contains one query : 'select character_set_name from INFORMATION_SCHEMA.character_sets'
 """
 PBI_PBDES_CHARSET_NAME_MSG_4 =  \
-                    b"\x02\x00\x00\x00\x45\x00\x00\x96\x5e\xe6\x40\x00\x80\x06\x00\x00" \
-                    b"\x7f\x00\x00\x01\x7f\x00\x00\x01\xe8\x79\x15\x38\x02\x65\x06\xb2" \
-                    b"\x41\xb3\xc9\x7f\x50\x18\x27\xce\xff\x8c\x00\x00\x50\x00\x00\x00" \
+                    b"\x50\x00\x00\x00" \
                     b"\x48\x00\x73\x65\x6c\x65\x63\x74\x20\x63\x68\x61\x72\x61\x63\x74" \
                     b"\x65\x72\x5f\x73\x65\x74\x5f\x6e\x61\x6d\x65\x20\x66\x72\x6f\x6d" \
                     b"\x20\x49\x4e\x46\x4f\x52\x4d\x41\x54\x49\x4f\x4e\x5f\x53\x43\x48" \
@@ -261,23 +259,33 @@ PSQL_SIMPLE_QUERY_MSG_3 = b'Q\x00\x00\x00\x19select * from test1;\x00'
 PSQL_MSGS = [PSQL_STARTUP_MSG_1, PSQL_PASSWD_MSG_2, PSQL_SIMPLE_QUERY_MSG_3]
 
 def run_UT(host, port, msgs):
-    RX_BUFF_SIZE = 4096
+    RX_BUFF_SIZE = 64000
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((host, port))
 
         for msg in msgs :
-            print("[+] Sending : {}".format(str(msg)))
+            # print("[+] Sending : {}".format(str(msg)))
+            print("[+] Sending : {} bytes".format(len(msg)))            
 
+            rx_iterations = 1
+            if msg == PBI_PBDE_x3_S :
+                print ("Sending PBI_PBDE_x3_S. Looking for three return messages")
+                rx_iterations = 3
+
+            # TX
             sock.sendall(msg)
 
-            response = sock.recv(RX_BUFF_SIZE)
+            # RX
+            for i in range(rx_iterations) :
+                response = sock.recv(RX_BUFF_SIZE)
 
             if not response:
                 print("[-] Not Received")
                 break
 
-            print("[+] Received {}".format(str(response)))
+            # print("[+] Received {}".format(str(response)))
+            print("[+] Received : {} bytes".format(len(response)))            
 
 if __name__ == "__main__" :
     PG_PORT = 5432
