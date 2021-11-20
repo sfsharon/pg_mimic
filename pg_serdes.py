@@ -382,7 +382,7 @@ def prepare_pg_catalog_cols_value(connection, query) :
         table_details = sqream_catalog_tables(connection)
         cols_values = []
         for table_detail in table_details :
-            
+
                                 #'table_schema'
             cols_values.append([table_detail[SQREAM_CATALOG_SCHEMA_NAME], \
                                 # 'table_name'
@@ -528,7 +528,7 @@ def Q_Msg_Simple_Query_Deserialize(data) :
     simple_query = payload[ : payload.find(NULL_TERMINATOR) + 1]
     parsed_msg[QUERY_MSG__SIMPLE_QUERY] = simple_query
 
-    logging.info("*** Q_Msg_Simple_Query_Deserialize: Query received \"{}\"".format(simple_query))
+    logging.info("Simple Query received: \"{}\"".format(simple_query.decode("utf-8")))
 
     return parsed_msg
 

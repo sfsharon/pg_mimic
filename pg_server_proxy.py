@@ -15,7 +15,9 @@ logging.basicConfig(level=logging.DEBUG)
 #  TODO 19/11/2021 1900
   1. Verify psql client still works
   2. PBI Messages : 
-    2.1 Work on Show tables (preview mode) and Show columns phases
+    2.1 Separate the response to the QPBDES query, with the Q simple query a "DISCARD ALL" command, 
+        to two separate responses, and not keep it as one (by adding another while loop in the server proxy, until finishing munching input)
+    2.2 Work on Show tables (preview mode) and Show columns phases
 """
 
 
