@@ -220,8 +220,10 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     else :  # Regular Query
         # Query backend database
         query_output = execute_query(backend_db_con, query)
-
-        cols_desc   = query_output[BACKEND_QUERY__DESCRIPTION]
+        cols_desc   = prepare_cols_desc(query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_NAME],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_TYPE],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_LENGTH],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_FORMAT])
         cols_values = query_output[BACKEND_QUERY__RESULT]
 
         # Serialize Response
@@ -288,7 +290,7 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     if is_catalog_query:        
         # logging.info ("Got initial PBI type query\n")         
         cols_desc  = prepare_pg_catalog_cols_desc(query)
-        cols_values = prepare_pg_catalog_cols_value(query)
+        cols_values = prepare_pg_catalog_cols_value(backend_db_con, query)
 
     msg += T_Msg_RowDescription_Serialize(cols_desc)
 
@@ -302,7 +304,10 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
         logging.info ("Recieved query :\n" + (query.decode("utf-8")))
         # Query backend database
         query_output = execute_query(backend_db_con, query)
-        cols_desc    = query_output[BACKEND_QUERY__DESCRIPTION]
+        cols_desc   = prepare_cols_desc(query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_NAME],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_TYPE],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_LENGTH],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_FORMAT])
         cols_values  = query_output[BACKEND_QUERY__RESULT]
 
     for col_values in cols_values :

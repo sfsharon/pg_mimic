@@ -8,6 +8,12 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 import struct
+from sqream_backend import  sqream_catalog_tables,      \
+                            COL_FORMAT_TEXT,            \
+                            COL_FORMAT_BINARY,          \
+                            SQREAM_CATALOG_SCHEMA_NAME, \
+                            SQREAM_CATALOG_TABLE_NAME,  \
+                            SQREAM_TYPE_INT
 
 # ***********************************************
 # * Constants
@@ -64,10 +70,6 @@ COL_DESC__TYPE   = "col_desc_type"
 COL_DESC__FORMAT = "col_desc_format"
 COL_DESC__LENGTH = "col_desc_length"
 
-# Postgres Column formats 
-COL_FORMAT_TEXT    = 0
-COL_FORMAT_BINARY  = 1
-
 # Postgres Column types 
 COL_INT_TYPE_OID = 23
 COL_LONG_INT_TYPE_OID = 26
@@ -85,6 +87,8 @@ PBI_CATALOG_USER_TABLE_LIST_QUERY           = b"select TABLE_SCHEMA, TABLE_NAME,
 PG_DISCARD_ALL_QUERY                        = b'DISCARD ALL\x00'
 PG_DISCARD_ALL_STRING                       = 'DISCARD ALL'
 
+USER_TABLE_TYPE                             =  'BASE TABLE'  # Currently hard coded all user tables o be BASE TABLE type
+
 # ***********************************************
 # * Utility functions
 # ***********************************************
@@ -97,7 +101,7 @@ def prepare_cols_desc(cols_name, cols_type, cols_length, cols_format):
 
     @return cols_desc
     """
-    from sqream_backend import SQREAM_TYPE_INT 
+ 
 
     num_of_cols = len(cols_name)
 
@@ -203,7 +207,7 @@ def prepare_pg_catalog_cols_desc(query):
     cols_desc = prepare_cols_desc(cols_name, cols_type, cols_length, cols_format)
     return cols_desc
 
-def prepare_pg_catalog_cols_value(query) :
+def prepare_pg_catalog_cols_value(connection, query) :
     """! Prepare PG Catalog column values to a PG catalog query
     """
     empty_cols_values = []
@@ -375,10 +379,16 @@ def prepare_pg_catalog_cols_value(query) :
                         ['\x55\x54\x46\x38' ]]          # Value : UTF8
         return cols_values 
     elif query == PBI_CATALOG_USER_TABLE_LIST_QUERY :   # TODO : To be replaced with actual call to sqream_catalog.tables query
-        cols_values = [
-                        #'table_schema',        'table_name',     'table_type']
-                        ['public'         ,     't1'           ,   'BASE TABLE']
-        ]
+        table_details = sqream_catalog_tables(connection)
+        cols_values = []
+        for table_detail in table_details :
+            
+                                #'table_schema'
+            cols_values.append([table_detail[SQREAM_CATALOG_SCHEMA_NAME], \
+                                # 'table_name'
+                                table_detail[SQREAM_CATALOG_TABLE_NAME],  \
+                                # 'table_type'
+                                USER_TABLE_TYPE ])               # Hard coded- Fixed table type 
         return cols_values 
     
     else :

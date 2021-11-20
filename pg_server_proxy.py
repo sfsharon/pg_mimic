@@ -15,8 +15,7 @@ logging.basicConfig(level=logging.DEBUG)
 #  TODO 19/11/2021 1900
   1. Verify psql client still works
   2. PBI Messages : 
-    2.1 Init phase : Dynamically show tables  sqream_catalog.tables 
-    2.3 Wirk on Show tables and Show columns phases
+    2.1 Work on Show tables (preview mode) and Show columns phases
 """
 
 
