@@ -41,7 +41,7 @@ COL_FORMAT_BINARY  = 1
 # ***********************************************
 
 def get_db(host, port, database, username, password) :
-    logging.info("*** get_db : Connecting to SQream server {}:{}".format(host, port))
+    logging.info("get_db : Connecting to SQream server {}:{}".format(host, port))
     con = pysqream.connect( host, port,database, username, password)
     return con
 
@@ -51,15 +51,15 @@ def execute_query (connection, query) :
     """
     cur = connection.cursor()
 
-    logging.info("Executing query {}".format(query.decode('utf-8')))
+    logging.info("Executing query: \"{}\"".format(query.decode('utf-8')))
     cur.execute(query.decode("utf-8"))
 
-    logging.debug("get_db : Column names {}".format(str(cur.col_names)))
-    logging.debug("get_db : Column types {}".format(str(cur.description)))
+    # logging.debug("get_db : Column names {}".format(str(cur.col_names)))
+    # logging.debug("get_db : Column types {}".format(str(cur.description)))
 
     result = cur.fetchall()
 
-    logging.debug("get_db : Result {}".format(str(result)))
+    # logging.debug("get_db : Result {}".format(str(result)))
 
     # Get column type
     cols_type   = [metadata[0] for metadata in cur.col_type_tups]

@@ -129,6 +129,8 @@ def init_param_state_transition(parsed_msgs, output_msg, backend_db_con) :
 
     res = {}
 
+    res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
+
     # Serialize Response    
     output_msg = R_Msg_AuthOk_Serialize()
 
@@ -216,7 +218,7 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
         msg =  S_Msg_ParameterStatus_Serialize (str.encode('is_superuser'), str.encode('on'))
         msg += S_Msg_ParameterStatus_Serialize (str.encode('session_authorization'), str.encode('postgres'))
         msg += C_Msg_CommandComplete_Serialize(PG_DISCARD_ALL_STRING) 
-        res[STATE_MACHINE__IS_TX_MSG] = False
+        msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
     else :  # Regular Query
         # Query backend database
         query_output = execute_query(backend_db_con, query)
@@ -238,13 +240,11 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
 
         msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
 
-        res[STATE_MACHINE__IS_TX_MSG] = True
 
-
+    res[STATE_MACHINE__IS_TX_MSG] = True
     res[STATE_MACHINE__OUTPUT_MSG] = output_msg + msg
     # Next state - Query state, be prepared for the next query
     res[STATE_MACHINE__NEW_STATE] = QUERY_STATE
-
     return res
 
 def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
@@ -319,7 +319,7 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
 
     # *** Prepare ready for query message, if finished munching the input message
     if len(parsed_msgs) == 0 :
-        send_msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
+        msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
         is_tx_msg = True
         
     res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs

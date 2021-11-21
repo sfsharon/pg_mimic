@@ -301,7 +301,9 @@ def run_UT(host, port, msgs):
             if msg == PBI_PBDE_x3_S :
                 print ("Sending PBI_PBDE_x3_S. Looking for three return messages")
                 rx_iterations = 3
-
+            elif msg == PBI_TABLE_LIST_MSG_5 :
+                print ("Sending PBI_TABLE_LIST_MSG_5. Looking for two return messages")
+                rx_iterations = 2
             # TX
             sock.sendall(msg)
 

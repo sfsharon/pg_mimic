@@ -12,12 +12,10 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 19/11/2021 1900
+#  TODO 21/11/2021 0800
   1. Verify psql client still works
   2. PBI Messages : 
-    2.1 Separate the response to the QPBDES query, with the Q simple query a "DISCARD ALL" command, 
-        to two separate responses, and not keep it as one (by adding another while loop in the server proxy, until finishing munching input)
-    2.2 Work on Show tables (preview mode) and Show columns phases
+    2.1 Work on Show tables (preview mode) and Show columns phases
 """
 
 
@@ -57,14 +55,18 @@ class MyPGHandler(socketserver.BaseRequestHandler):
             res[STATE_MACHINE__OUTPUT_MSG]  = bytes('', "utf-8")
             res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
 
-            # Run state machine as long as the state transitions have nothing to transmit
-            while res[STATE_MACHINE__IS_TX_MSG] == False :            
-                res = self.server.pg_sm.run(res[STATE_MACHINE__PARSED_MSGS], 
-                                            res[STATE_MACHINE__OUTPUT_MSG])
+            # As long as there are messages received from client that were not munched, keep processing them
+            while len(res[STATE_MACHINE__PARSED_MSGS]) > 0: 
+                # Run state machine as long as the state transitions have nothing to transmit
+                while res[STATE_MACHINE__IS_TX_MSG] == False : 
+                    res = self.server.pg_sm.run(res[STATE_MACHINE__PARSED_MSGS], 
+                                                res[STATE_MACHINE__OUTPUT_MSG])
 
-            # TX Response
-            self.request.sendall(res[STATE_MACHINE__OUTPUT_MSG])            
-
+                # TX Response
+                self.request.sendall(res[STATE_MACHINE__OUTPUT_MSG])
+                # Enable running the state machine, if there are additional messages in the parsed_msgs
+                res[STATE_MACHINE__IS_TX_MSG] = False
+                res[STATE_MACHINE__OUTPUT_MSG]  = bytes('', "utf-8")
 
 def RunPGServer(host, port) :
     # Create the server, binding to localhost on port PG_PORT
