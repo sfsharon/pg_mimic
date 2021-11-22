@@ -16,13 +16,17 @@ logging.basicConfig(level=logging.DEBUG)
 
 import socket
 
+# ======================================================================================
+# Init queries - PBI initiates connection with PG, and queries all the tables in DB 
+# ======================================================================================
+
 # Power BI sequence of messages
 PBI_STARTUP_MSG_1 = b'\x00\x00\x00>\x00\x03\x00\x00user\x00postgres\x00client_encoding\x00UTF8\x00database\x00postgres\x00\x00'
-PBI_PASSWORD_MSG_2 = b'p\x00\x00\x00(md5b400a301a6904ae12fc76a8fff168215\x00'
+PBI_STARTUP_PASSWORD_MSG_2 = b'p\x00\x00\x00(md5b400a301a6904ae12fc76a8fff168215\x00'
 PBI_PBDES_MSG_3 = b"P\x00\x00\x00\xb6\x00select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE\r\nfrom INFORMATION_SCHEMA.tables\r\nwhere TABLE_SCHEMA not in ('information_schema', 'pg_catalog')\r\norder by TABLE_SCHEMA, TABLE_NAME\x00\x00\x00B\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01D\x00\x00\x00\x06P\x00E\x00\x00\x00\t\x00\x00\x00\x00\x00S\x00\x00\x00\x04"
 
 """
-PBI_PBDE_x3_S Contains three PBDE queries :
+PBI_STARTUP_PBDE_x3_S Contains three PBDE queries :
 1. 
     /*** Load all supported types ***/
     SELECT ns.nspname, a.typname, a.oid, a.typrelid, a.typbasetype,
@@ -77,7 +81,7 @@ PBI_PBDE_x3_S Contains three PBDE queries :
     ORDER BY oid, enumsortorder
 
 """
-PBI_PBDE_x3_S = b"\x50\x00\x00\x06" \
+PBI_STARTUP_PBDE_x3_S = b"\x50\x00\x00\x06" \
 b"\xc0\x00\x0d\x0a\x2f\x2a\x2a\x2a\x20\x4c\x6f\x61\x64\x20\x61\x6c" \
 b"\x6c\x20\x73\x75\x70\x70\x6f\x72\x74\x65\x64\x20\x74\x79\x70\x65" \
 b"\x73\x20\x2a\x2a\x2a\x2f\x0d\x0a\x53\x45\x4c\x45\x43\x54\x20\x6e" \
@@ -233,9 +237,9 @@ b"\x01\x00\x00\x44\x00\x00\x00\x06\x50\x00\x45\x00\x00\x00\x09\x00" \
 b"\x00\x00\x00\x00\x53\x00\x00\x00\x04"
 
 """
-PBI_PBDES_CHARSET_NAME_MSG_4 Contains one query : 'select character_set_name from INFORMATION_SCHEMA.character_sets'
+PBI_STARTUP_PBDES_CHARSET_NAME_MSG_4 Contains one query : 'select character_set_name from INFORMATION_SCHEMA.character_sets'
 """
-PBI_PBDES_CHARSET_NAME_MSG_4 =  \
+PBI_STARTUP_PBDES_CHARSET_NAME_MSG_4 =  \
                     b"\x50\x00\x00\x00" \
                     b"\x48\x00\x73\x65\x6c\x65\x63\x74\x20\x63\x68\x61\x72\x61\x63\x74" \
                     b"\x65\x72\x5f\x73\x65\x74\x5f\x6e\x61\x6d\x65\x20\x66\x72\x6f\x6d" \
@@ -246,7 +250,7 @@ PBI_PBDES_CHARSET_NAME_MSG_4 =  \
                     b"\x00\x00\x00\x00\x00\x53\x00\x00\x00\x04"
 
 """
-PBI_TABLE_LIST_MSG_5 Contains :
+PBI_STARTUP_TABLE_LIST_MSG_5 Contains :
 Simple Query (Q message) : "DISCARD ALL"
 PBDE Query :
                 select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
@@ -254,7 +258,7 @@ PBDE Query :
                 where TABLE_SCHEMA not in ('information_schema', 'pg_catalog')
                 order by TABLE_SCHEMA, TABLE_NAME
 """
-PBI_TABLE_LIST_MSG_5 = \
+PBI_STARTUP_TABLE_LIST_MSG_5 = \
                 b"\x51\x00\x00\x00" \
                 b"\x10\x44\x49\x53\x43\x41\x52\x44\x20\x41\x4c\x4c\x00\x50\x00\x00" \
                 b"\x00\xb6\x00\x73\x65\x6c\x65\x63\x74\x20\x54\x41\x42\x4c\x45\x5f" \
@@ -272,19 +276,69 @@ PBI_TABLE_LIST_MSG_5 = \
                 b"\x01\x00\x01\x44\x00\x00\x00\x06\x50\x00\x45\x00\x00\x00\x09\x00" \
                 b"\x00\x00\x00\x00\x53\x00\x00\x00\x04"
 
+
+# =========================================================
+# Discovery queries - PBI shows preview of tables data
+# =========================================================
+
+"""
+PBI_PREVIEW_TABLE_MSG_1 Contains :
+Simple Query (Q message) : "DISCARD ALL"
+PBDE Query :
+        select COLUMN_NAME, ORDINAL_POSITION, IS_NULLABLE, case when (data_type like '%unsigned%') then DATA_TYPE || ' unsigned' else DATA_TYPE end as DATA_TYPE
+        from INFORMATION_SCHEMA.columns
+        where TABLE_SCHEMA = 'public' and TABLE_NAME = 'test1'
+        order by TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
+"""
+PBI_PREVIEW_TABLE_MSG_1 = \
+                b"\x51\x00\x00\x00" \
+                b"\x10\x44\x49\x53\x43\x41\x52\x44\x20\x41\x4c\x4c\x00\x50\x00\x00" \
+                b"\x01\x2e\x00\x73\x65\x6c\x65\x63\x74\x20\x43\x4f\x4c\x55\x4d\x4e" \
+                b"\x5f\x4e\x41\x4d\x45\x2c\x20\x4f\x52\x44\x49\x4e\x41\x4c\x5f\x50" \
+                b"\x4f\x53\x49\x54\x49\x4f\x4e\x2c\x20\x49\x53\x5f\x4e\x55\x4c\x4c" \
+                b"\x41\x42\x4c\x45\x2c\x20\x63\x61\x73\x65\x20\x77\x68\x65\x6e\x20" \
+                b"\x28\x64\x61\x74\x61\x5f\x74\x79\x70\x65\x20\x6c\x69\x6b\x65\x20" \
+                b"\x27\x25\x75\x6e\x73\x69\x67\x6e\x65\x64\x25\x27\x29\x20\x74\x68" \
+                b"\x65\x6e\x20\x44\x41\x54\x41\x5f\x54\x59\x50\x45\x20\x7c\x7c\x20" \
+                b"\x27\x20\x75\x6e\x73\x69\x67\x6e\x65\x64\x27\x20\x65\x6c\x73\x65" \
+                b"\x20\x44\x41\x54\x41\x5f\x54\x59\x50\x45\x20\x65\x6e\x64\x20\x61" \
+                b"\x73\x20\x44\x41\x54\x41\x5f\x54\x59\x50\x45\x0d\x0a\x66\x72\x6f" \
+                b"\x6d\x20\x49\x4e\x46\x4f\x52\x4d\x41\x54\x49\x4f\x4e\x5f\x53\x43" \
+                b"\x48\x45\x4d\x41\x2e\x63\x6f\x6c\x75\x6d\x6e\x73\x0d\x0a\x77\x68" \
+                b"\x65\x72\x65\x20\x54\x41\x42\x4c\x45\x5f\x53\x43\x48\x45\x4d\x41" \
+                b"\x20\x3d\x20\x27\x70\x75\x62\x6c\x69\x63\x27\x20\x61\x6e\x64\x20" \
+                b"\x54\x41\x42\x4c\x45\x5f\x4e\x41\x4d\x45\x20\x3d\x20\x27\x74\x65" \
+                b"\x73\x74\x31\x27\x0d\x0a\x6f\x72\x64\x65\x72\x20\x62\x79\x20\x54" \
+                b"\x41\x42\x4c\x45\x5f\x53\x43\x48\x45\x4d\x41\x2c\x20\x54\x41\x42" \
+                b"\x4c\x45\x5f\x4e\x41\x4d\x45\x2c\x20\x4f\x52\x44\x49\x4e\x41\x4c" \
+                b"\x5f\x50\x4f\x53\x49\x54\x49\x4f\x4e\x00\x00\x00\x42\x00\x00\x00" \
+                b"\x0e\x00\x00\x00\x00\x00\x00\x00\x01\x00\x01\x44\x00\x00\x00\x06" \
+                b"\x50\x00\x45\x00\x00\x00\x09\x00\x00\x00\x00\x00\x53\x00\x00\x00\x04"
+
 # PBI MSGS 
 # -------------
-PBI_MSGS = [PBI_STARTUP_MSG_1, 
-            PBI_PASSWORD_MSG_2, 
-            PBI_PBDE_x3_S, 
-            PBI_PBDES_CHARSET_NAME_MSG_4,
-            PBI_TABLE_LIST_MSG_5]
+PBI_STARTUP_MSGS = [PBI_STARTUP_MSG_1, 
+                    PBI_STARTUP_PASSWORD_MSG_2, 
+                    PBI_STARTUP_PBDE_x3_S, 
+                    PBI_STARTUP_PBDES_CHARSET_NAME_MSG_4,
+                    PBI_STARTUP_TABLE_LIST_MSG_5]
+
+PBI_PREVIEW_MSGS = [PBI_STARTUP_MSG_1,
+                    PBI_STARTUP_PASSWORD_MSG_2, 
+                    PBI_PREVIEW_TABLE_MSG_1]
+
+PBI_MSGS = PBI_PREVIEW_MSGS
+
+# =========================================================
+# psql Queries
+# =========================================================
+
+PSQL_STARTUP_MSG_1      = b'\x00\x00\x00W\x00\x03\x00\x00user\x00postgres\x00database\x00postgres\x00application_name\x00psql\x00client_encoding\x00WIN1252\x00\x00'
+PSQL_PASSWD_MSG_2       = b'p\x00\x00\x00(md529c7bf08e60cbef8e4d36c5abc01f638\x00'
+PSQL_SIMPLE_QUERY_MSG_3 = b'Q\x00\x00\x00\x19select * from test1;\x00'
 
 # PSQL MSGS 
 # -------------
-PSQL_STARTUP_MSG_1 = b'\x00\x00\x00W\x00\x03\x00\x00user\x00postgres\x00database\x00postgres\x00application_name\x00psql\x00client_encoding\x00WIN1252\x00\x00'
-PSQL_PASSWD_MSG_2= b'p\x00\x00\x00(md529c7bf08e60cbef8e4d36c5abc01f638\x00'
-PSQL_SIMPLE_QUERY_MSG_3 = b'Q\x00\x00\x00\x19select * from test1;\x00'
 PSQL_MSGS = [PSQL_STARTUP_MSG_1, PSQL_PASSWD_MSG_2, PSQL_SIMPLE_QUERY_MSG_3]
 
 def run_UT(host, port, msgs):
@@ -298,11 +352,11 @@ def run_UT(host, port, msgs):
             print("[+] Sending : {} bytes".format(len(msg)))            
 
             rx_iterations = 1
-            if msg == PBI_PBDE_x3_S :
-                print ("Sending PBI_PBDE_x3_S. Looking for three return messages")
+            if msg == PBI_STARTUP_PBDE_x3_S :
+                print ("Sending PBI_STARTUP_PBDE_x3_S. Looking for three return messages")
                 rx_iterations = 3
-            elif msg == PBI_TABLE_LIST_MSG_5 :
-                print ("Sending PBI_TABLE_LIST_MSG_5. Looking for two return messages")
+            elif msg == PBI_STARTUP_TABLE_LIST_MSG_5 :
+                print ("Sending PBI_STARTUP_TABLE_LIST_MSG_5. Looking for two return messages")
                 rx_iterations = 2
             # TX
             sock.sendall(msg)
