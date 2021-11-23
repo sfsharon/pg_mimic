@@ -221,7 +221,7 @@ def simple_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
         msg += Z_Msg_ReadyForQuery_Serialize(READY_FOR_QUERY_SERVER_STATUS_IDLE)
     else :  # Regular Query
         # Query backend database
-        query_output = execute_query(backend_db_con, query)
+        query_output = execute_query(backend_db_con, query.decode('utf-8'))
         cols_desc   = prepare_cols_desc(query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_NAME],
                                         query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_TYPE],
                                         query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_LENGTH],
@@ -303,7 +303,7 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     if not is_catalog_query: 
         logging.info ("Recieved query :\n" + (query.decode("utf-8")))
         # Query backend database
-        query_output = execute_query(backend_db_con, query)
+        query_output = execute_query(backend_db_con, query.decode('utf-8'))
         cols_desc   = prepare_cols_desc(query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_NAME],
                                         query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_TYPE],
                                         query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_LENGTH],

@@ -8,12 +8,16 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 import struct
-from sqream_backend import  sqream_catalog_tables,      \
-                            COL_FORMAT_TEXT,            \
-                            COL_FORMAT_BINARY,          \
-                            SQREAM_CATALOG_SCHEMA_NAME, \
-                            SQREAM_CATALOG_TABLE_NAME,  \
-                            SQREAM_TYPE_INT
+from sqream_backend import  sqream_catalog_tables,              \
+                            sqream_catalog_cols_info,           \
+                            COL_FORMAT_TEXT,                    \
+                            COL_FORMAT_BINARY,                  \
+                            SQREAM_CATALOG_SCHEMA_NAME,         \
+                            SQREAM_CATALOG_TABLE_NAME,          \
+                            SQREAM_TYPE_INT,                    \
+                            SQREAM_CATALOG_COL_INFO_COL_NAME,   \
+                            SQREAM_CATALOG_COL_INFO_COL_TYPE,   \
+                            SQREAM_CATALOG_COL_INFO_IS_NULLABLE 
 
 # ***********************************************
 # * Constants
@@ -84,14 +88,30 @@ PBI_CATALOG_FIELD_DEF_COMPOSITE_TYPES_QUERY = b"/*** Load field definitions for 
 PBI_CATALOG_ENUM_FIELDS_QUERY               = b'/*** Load enum fields ***/\r\nSELECT pg_type.oid, enumlabel\r\nFROM pg_enum\r\nJOIN pg_type ON pg_type.oid=enumtypid\r\nORDER BY oid, enumsortorder\x00'
 PBI_CATALOG_CHAR_SET_QUERY                  = b'select character_set_name from INFORMATION_SCHEMA.character_sets\x00'
 PBI_CATALOG_USER_TABLE_LIST_QUERY           = b"select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE\r\nfrom INFORMATION_SCHEMA.tables\r\nwhere TABLE_SCHEMA not in ('information_schema', 'pg_catalog')\r\norder by TABLE_SCHEMA, TABLE_NAME\x00"
+PBI_CATALOG_COLUMN_INFO_QUERY               = b"select COLUMN_NAME, ORDINAL_POSITION, IS_NULLABLE, case when (data_type like '%unsigned%') then DATA_TYPE || ' unsigned' else DATA_TYPE end as DATA_TYPE\r\nfrom INFORMATION_SCHEMA.columns\r\nwhere TABLE_SCHEMA = 'public' and TABLE_NAME =" #Table specific :  'test1'\r\norder by TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION\x00"
+PBI_CATALOG_TABLE_NAME_REGULAR_EXPRESSION   = r"TABLE_NAME = '(\w*)'"
 PG_DISCARD_ALL_QUERY                        = b'DISCARD ALL\x00'
 PG_DISCARD_ALL_STRING                       = 'DISCARD ALL'
 
 USER_TABLE_TYPE                             =  'BASE TABLE'  # Currently hard coded all user tables o be BASE TABLE type
 
+PG_INT_STRING = "integer"
+SQ_INT_STRING = "int"
+PG_TEXT_STRING = "text"
+SQ_TEXT_STRING = "text"
+
 # ***********************************************
 # * Utility functions
 # ***********************************************
+def get_table_from_catalog_col_info_query(query) :
+    """
+    Extract from the catalog query PBI_CATALOG_COLUMN_INFO_QUERY the table name 
+    """
+    import re
+    table_names = re.findall(PBI_CATALOG_TABLE_NAME_REGULAR_EXPRESSION, query)
+    assert len(table_names) == 1, "Mismatch number of table names in query"
+    return table_names[0]
+
 def prepare_cols_desc(cols_name, cols_type, cols_length, cols_format):
     """! Prepare the columns description object, needed by the T message
     @param cols_name
@@ -166,6 +186,10 @@ def is_pg_catalog_msg(query):
     elif query == PBI_CATALOG_USER_TABLE_LIST_QUERY :
         logging.info("Received PG Catalog Table List query")
         is_pg_catalog = True
+    elif query.startswith(PBI_CATALOG_COLUMN_INFO_QUERY) :
+        logging.info("Received PG Catalog Column Info query")
+        is_pg_catalog = True
+    
     return is_pg_catalog
 
 def prepare_pg_catalog_cols_desc(query):
@@ -199,8 +223,11 @@ def prepare_pg_catalog_cols_desc(query):
         cols_type   = [COL_TEXT_TYPE_OID,           COL_TEXT_TYPE_OID,          COL_TEXT_TYPE_2_OID]
         cols_length = [64,                          64,                         -1]
         cols_format = [COL_FORMAT_BINARY,           COL_FORMAT_BINARY,          COL_FORMAT_BINARY]
-
-
+    elif query.startswith(PBI_CATALOG_COLUMN_INFO_QUERY) :
+        cols_name   = ['column_name',              'ordinal_position',         'is_nullable',           'data_type']
+        cols_type   = [COL_TEXT_TYPE_OID,           COL_INT_TYPE_OID,          COL_TEXT_TYPE_2_OID,     COL_TEXT_TYPE_2_OID]
+        cols_length = [64,                          4,                         -1,                      -1]
+        cols_format = [COL_FORMAT_BINARY,           COL_FORMAT_BINARY,          COL_FORMAT_BINARY,      COL_FORMAT_BINARY]
     else :
         raise ValueError('Received unknown pg catalog query ')
 
@@ -382,7 +409,6 @@ def prepare_pg_catalog_cols_value(connection, query) :
         table_details = sqream_catalog_tables(connection)
         cols_values = []
         for table_detail in table_details :
-
                                 #'table_schema'
             cols_values.append([table_detail[SQREAM_CATALOG_SCHEMA_NAME], \
                                 # 'table_name'
@@ -390,7 +416,21 @@ def prepare_pg_catalog_cols_value(connection, query) :
                                 # 'table_type'
                                 USER_TABLE_TYPE ])               # Hard coded- Fixed table type 
         return cols_values 
-    
+    elif query.startswith(PBI_CATALOG_COLUMN_INFO_QUERY) :
+        curr_table_name = get_table_from_catalog_col_info_query(query.decode("utf-8"))
+        col_details = sqream_catalog_cols_info(curr_table_name, connection)
+        cols_values = []
+        for index, col_detail in enumerate(col_details) :
+            # Type SQ to PG translation
+            col_type = col_detail[SQREAM_CATALOG_COL_INFO_COL_TYPE]
+            if   SQ_INT_STRING  in col_type : col_type = PG_INT_STRING
+            elif SQ_TEXT_STRING in col_type : col_type = PG_TEXT_STRING
+            else : raise ValueError (f"Unsupported type {col_type}")
+            cols_values.append([col_detail[SQREAM_CATALOG_COL_INFO_COL_NAME], \
+                               index + 1,                                        \
+                               col_detail[SQREAM_CATALOG_COL_INFO_IS_NULLABLE], \
+                               col_type])
+        return cols_values
     else :
         raise ValueError('Received unknown pg catalog query ')
 

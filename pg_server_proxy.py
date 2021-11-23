@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 21/11/2021 0800
+#  TODO 23/11/2021 0800
   1. Verify psql client still works
   2. PBI Messages : 
     2.1 Work on Show tables (preview mode) and Show columns phases

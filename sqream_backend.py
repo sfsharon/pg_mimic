@@ -22,10 +22,15 @@ BACKEND_QUERY__DESC_COLS_FORMAT = "cols_format"
 BACKEND_QUERY__RESULT       = "backend_query__result"
 
 SQREAM_TYPE_INT             = 'ftInt'
+SQREAM_COL_NOT_NULLABLE     = 'not null'
 
-SQREAM_CATALOG_TABLES_QUERY = b"SELECT * FROM sqream_catalog.tables"
-SQREAM_CATALOG_SCHEMA_NAME  = 'schema_name'
-SQREAM_CATALOG_TABLE_NAME   = 'table_name'
+SQREAM_CATALOG_TABLES_QUERY  = "SELECT * FROM sqream_catalog.tables"
+SQREAM_CATALOG_COLS_QUERY    = "SELECT GET_DDL('{tbl}')"
+SQREAM_CATALOG_SCHEMA_NAME   = 'schema_name'
+SQREAM_CATALOG_TABLE_NAME    = 'table_name'
+SQREAM_CATALOG_COL_INFO_COL_NAME    = 'column_name'
+SQREAM_CATALOG_COL_INFO_COL_TYPE    = 'column_type'
+SQREAM_CATALOG_COL_INFO_IS_NULLABLE = 'column_is_nullable'
 SQREAM_CATALOG_SCHEMA_INDEX  = 2
 SQREAM_CATALOG_TABLE_INDEX   = 3
 
@@ -51,8 +56,8 @@ def execute_query (connection, query) :
     """
     cur = connection.cursor()
 
-    logging.info("Executing query: \"{}\"".format(query.decode('utf-8')))
-    cur.execute(query.decode("utf-8"))
+    logging.info("Executing query: \"{}\"".format(query))
+    cur.execute(query)
 
     # logging.debug("get_db : Column names {}".format(str(cur.col_names)))
     # logging.debug("get_db : Column types {}".format(str(cur.description)))
@@ -89,6 +94,44 @@ def sqream_catalog_tables(connection) :
         table_details.append({SQREAM_CATALOG_SCHEMA_NAME : table_detail[SQREAM_CATALOG_SCHEMA_INDEX],
                               SQREAM_CATALOG_TABLE_NAME  : table_detail[SQREAM_CATALOG_TABLE_INDEX]})
     return table_details
+
+def sqream_catalog_cols_info(table_name, connection) :
+    """
+    Returns information on the columns of a specific table (get_ddl) 
+    """
+    import re
+    ERROR_MSG = f"Error in receiving column information for table {table_name}"
+    CREATE_TABLE_LINE_REGEXP = r"create table \"(\w*)\"\.\"(\w*)\""
+    COL_NAME_REGEXP = r"\W*\"\w*\""
+
+    cols_details = []
+
+    res = execute_query(connection, SQREAM_CATALOG_COLS_QUERY.format(tbl = table_name))
+
+    assert len(res[BACKEND_QUERY__RESULT][0]) == 1, ERROR_MSG
+
+    # Process DDL statement
+    ddl_statement = res[BACKEND_QUERY__RESULT][0][0]
+    ddl_lines = ddl_statement.split('\n')
+    assert len(ddl_lines) > 0, ERROR_MSG
+    received_table_name = re.findall(CREATE_TABLE_LINE_REGEXP, ddl_lines[0])[0][1]
+    assert table_name == received_table_name, ERROR_MSG
+    ddl_lines = ddl_lines[1:]
+    for line in ddl_lines :
+        line = line.strip()
+        search_str = re.findall(COL_NAME_REGEXP, line)
+        if len(search_str) > 0 :
+            col_name = search_str[0]
+            col_type_with_is_null = line[len(col_name):].strip()
+            col_type = col_type_with_is_null.split()[0]
+            col_is_nullable = "NO" if SQREAM_COL_NOT_NULLABLE in col_type_with_is_null else "YES" 
+            col_name = col_name.strip("\"")
+            cols_details.append({SQREAM_CATALOG_COL_INFO_COL_NAME    : col_name,
+                                 SQREAM_CATALOG_COL_INFO_COL_TYPE    : col_type,
+                                 SQREAM_CATALOG_COL_INFO_IS_NULLABLE : col_is_nullable})
+
+    return cols_details
+
 
 if __name__ == "__main__" :
     HOST = "192.168.4.64"
