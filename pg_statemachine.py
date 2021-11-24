@@ -11,9 +11,9 @@ logging.basicConfig(level=logging.DEBUG)
 # *****************************************************
 # * State machine constants
 # *****************************************************
-STATE_MACHINE__NEW_STATE = "new_state"
-STATE_MACHINE__OUTPUT_MSG = "send_msg"
-STATE_MACHINE__IS_TX_MSG = "is_tx_msg"
+STATE_MACHINE__NEW_STATE   = "new_state"
+STATE_MACHINE__OUTPUT_MSG  = "send_msg"
+STATE_MACHINE__IS_TX_MSG   = "is_tx_msg"
 STATE_MACHINE__PARSED_MSGS = "parsed_msgs"
 
 # ********************************************************

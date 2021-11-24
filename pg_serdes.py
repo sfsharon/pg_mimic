@@ -75,11 +75,11 @@ COL_DESC__FORMAT = "col_desc_format"
 COL_DESC__LENGTH = "col_desc_length"
 
 # Postgres Column types 
-COL_INT_TYPE_OID = 23
-COL_LONG_INT_TYPE_OID = 26
-COL_TEXT_TYPE_OID = 19
-COL_TEXT_TYPE_2_OID = 1043
-COL_CHAR_TYPE_OID = 18
+COL_INT_TYPE_OID        = 23
+COL_LONG_INT_TYPE_OID   = 26
+COL_TEXT_TYPE_OID       = 19
+COL_TEXT_TYPE_2_OID     = 1043
+COL_CHAR_TYPE_OID       = 18
 
 # Misc
 NULL_TERMINATOR = b'\x00'
@@ -99,6 +99,8 @@ PG_INT_STRING = "integer"
 SQ_INT_STRING = "int"
 PG_TEXT_STRING = "text"
 SQ_TEXT_STRING = "text"
+
+INT_LENGTH = 4
 
 # ***********************************************
 # * Utility functions
@@ -121,8 +123,6 @@ def prepare_cols_desc(cols_name, cols_type, cols_length, cols_format):
 
     @return cols_desc
     """
- 
-
     num_of_cols = len(cols_name)
 
     assert num_of_cols == len(cols_type) == len(cols_length) == len(cols_format), "Mismatch in number columns description attributes"
@@ -155,6 +155,17 @@ def utility_int_to_text(val) :
         rVal += char_digit
     rVal = rVal[::-1]           # Reverse the string
     return rVal
+
+def utility_int_to_bytes(val) :
+    """! Translate an int to bytes array, big endian
+    @param val integer to translate
+
+    @return bytes of 4 bytes int representation in Big Endian
+            For example : int value 1, return value 0x00/0x00/0x00/0x01
+    """
+    rVal = val.to_bytes(INT_LENGTH, byteorder = "big")
+    return rVal
+
 
 def is_password_msg(msg):
     """
@@ -426,8 +437,8 @@ def prepare_pg_catalog_cols_value(connection, query) :
             if   SQ_INT_STRING  in col_type : col_type = PG_INT_STRING
             elif SQ_TEXT_STRING in col_type : col_type = PG_TEXT_STRING
             else : raise ValueError (f"Unsupported type {col_type}")
-            cols_values.append([col_detail[SQREAM_CATALOG_COL_INFO_COL_NAME], \
-                               index + 1,                                        \
+            cols_values.append([col_detail[SQREAM_CATALOG_COL_INFO_COL_NAME],   \
+                               index + 1,                                       \
                                col_detail[SQREAM_CATALOG_COL_INFO_IS_NULLABLE], \
                                col_type])
         return cols_values
@@ -844,9 +855,12 @@ def D_Msg_DataRow_Serialize(cols_desc, cols_values) :
     fields_count = len(cols_values)
 
     for index, col_value in enumerate (cols_values) :
-        if cols_desc[index][COL_DESC__FORMAT] == COL_FORMAT_BINARY or \
-           cols_desc[index][COL_DESC__TYPE] == COL_TEXT_TYPE_OID or \
-           cols_desc[index][COL_DESC__TYPE] == COL_CHAR_TYPE_OID :
+        if cols_desc[index][COL_DESC__FORMAT] == COL_FORMAT_BINARY and \
+            cols_desc[index][COL_DESC__TYPE]  == COL_INT_TYPE_OID :
+                col_value_string = utility_int_to_bytes(col_value)
+        elif cols_desc[index][COL_DESC__FORMAT] == COL_FORMAT_BINARY or \
+             cols_desc[index][COL_DESC__TYPE] == COL_TEXT_TYPE_OID or \
+             cols_desc[index][COL_DESC__TYPE] == COL_CHAR_TYPE_OID :
                 col_value_string = bytes(col_value, "utf-8")
         elif cols_desc[index][COL_DESC__FORMAT] == COL_FORMAT_TEXT :
                 col_value_string = utility_int_to_text(col_value)

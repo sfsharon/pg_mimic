@@ -358,6 +358,9 @@ def run_UT(host, port, msgs):
             elif msg == PBI_STARTUP_TABLE_LIST_MSG_5 :
                 print ("Sending PBI_STARTUP_TABLE_LIST_MSG_5. Looking for two return messages")
                 rx_iterations = 2
+            elif msg == PBI_PREVIEW_TABLE_MSG_1 :
+                print ("Sending PBI_PREVIEW_TABLE_MSG_1. Looking for two return messages")
+                rx_iterations = 2
             # TX
             sock.sendall(msg)
 
