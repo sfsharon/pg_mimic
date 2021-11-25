@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 """##################3
-#  TODO 24/11/2021 0800
+#  TODO 25/11/2021 1100
   1. Verify psql client still works
   2. PBI Messages : 
     2.1 Connection of PBI shows a query with variables (e.g, $Table)

@@ -7,6 +7,8 @@ Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-form
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
+import re
+
 import struct
 from sqream_backend import  sqream_catalog_tables,              \
                             sqream_catalog_cols_info,           \
@@ -79,6 +81,7 @@ COL_INT_TYPE_OID        = 23
 COL_LONG_INT_TYPE_OID   = 26
 COL_TEXT_TYPE_OID       = 19
 COL_TEXT_TYPE_2_OID     = 1043
+COL_TEXT_TYPE_3_OID     = 25
 COL_CHAR_TYPE_OID       = 18
 
 # Misc
@@ -89,14 +92,20 @@ PBI_CATALOG_ENUM_FIELDS_QUERY               = b'/*** Load enum fields ***/\r\nSE
 PBI_CATALOG_CHAR_SET_QUERY                  = b'select character_set_name from INFORMATION_SCHEMA.character_sets\x00'
 PBI_CATALOG_USER_TABLE_LIST_QUERY           = b"select TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE\r\nfrom INFORMATION_SCHEMA.tables\r\nwhere TABLE_SCHEMA not in ('information_schema', 'pg_catalog')\r\norder by TABLE_SCHEMA, TABLE_NAME\x00"
 PBI_CATALOG_COLUMN_INFO_QUERY               = b"select COLUMN_NAME, ORDINAL_POSITION, IS_NULLABLE, case when (data_type like '%unsigned%') then DATA_TYPE || ' unsigned' else DATA_TYPE end as DATA_TYPE\r\nfrom INFORMATION_SCHEMA.columns\r\nwhere TABLE_SCHEMA = 'public' and TABLE_NAME =" #Table specific :  'test1'\r\norder by TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION\x00"
-PBI_CATALOG_TABLE_NAME_REGULAR_EXPRESSION   = r"TABLE_NAME = '(\w*)'"
+
+PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_2        = b"select\r\n    pkcol.COLUMN_NAME as PK_COLUMN_NAME,\r\n    fkcol.TABLE_SCHEMA AS FK_TABLE_SCHEMA,\r\n    fkcol.TABLE_NAME AS FK_TABLE_NAME,\r\n    fkcol.COLUMN_NAME as FK_COLUMN_NAME,\r\n    fkcol.ORDINAL_POSITION as ORDINAL,\r\n    fkcon.CONSTRAINT_SCHEMA || '_' || fkcol.TABLE_NAME || '_' ||" # Table specific: 'test1' || '_' || fkcon.CONSTRAINT_NAME as FK_NAME\r\nfrom\r\n    (select distinct constraint_catalog, constraint_schema, unique_constraint_schema, constraint_name, unique_constraint_name \r\n        from INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS) fkcon\r\n        inner join\r\n    INFORMATION_SCHEMA.KEY_COLUMN_USAGE fkcol\r\n        on fkcon.CONSTRAINT_SCHEMA = fkcol.CONSTRAINT_SCHEMA\r\n        and fkcon.CONSTRAINT_NAME = fkcol.CONSTRAINT_NAME\r\n        inner join\r\n    INFORMATION_SCHEMA.KEY_COLUMN_USAGE pkcol\r\n        on fkcon.UNIQUE_CONSTRAINT_SCHEMA = pkcol.CONSTRAINT_SCHEMA\r\n        and fkcon.UNIQUE_CONSTRAINT_NAME = pkcol.CONSTRAINT_NAME\r\nwhere pkcol.TABLE_SCHEMA = 'public' and pkcol.TABLE_NAME = 'test1'\r\n        and pkcol.ORDINAL_POSITION = fkcol.ORDINAL_POSITION\r\norder by FK_NAME, fkcol.ORDINAL_POSITION"
+PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_3        = b"select\r\n    pkcol.TABLE_SCHEMA AS PK_TABLE_SCHEMA,\r\n    pkcol.TABLE_NAME AS PK_TABLE_NAME,\r\n    pkcol.COLUMN_NAME as PK_COLUMN_NAME,\r\n    fkcol.COLUMN_NAME as FK_COLUMN_NAME,\r\n    fkcol.ORDINAL_POSITION as ORDINAL,\r\n    fkcon.CONSTRAINT_SCHEMA || '_' ||" #Table specific: 'test1' || '_' || pkcol.TABLE_NAME || '_' || fkcon.CONSTRAINT_NAME as FK_NAME\r\nfrom\r\n    (select distinct constraint_catalog, constraint_schema, unique_constraint_schema, constraint_name, unique_constraint_name \r\n        from INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS) fkcon\r\n        inner join\r\n    INFORMATION_SCHEMA.KEY_COLUMN_USAGE fkcol\r\n        on fkcon.CONSTRAINT_SCHEMA = fkcol.CONSTRAINT_SCHEMA\r\n        and fkcon.CONSTRAINT_NAME = fkcol.CONSTRAINT_NAME\r\n        inner join\r\n    INFORMATION_SCHEMA.KEY_COLUMN_USAGE pkcol\r\n        on fkcon.UNIQUE_CONSTRAINT_SCHEMA = pkcol.CONSTRAINT_SCHEMA\r\n        and fkcon.UNIQUE_CONSTRAINT_NAME = pkcol.CONSTRAINT_NAME\r\nwhere fkcol.TABLE_SCHEMA = 'public' and fkcol.TABLE_NAME = 'test1'\r\n        and pkcol.ORDINAL_POSITION = fkcol.ORDINAL_POSITION\r\norder by FK_NAME, fkcol.ORDINAL_POSITION"
+PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_4        = b"select i.CONSTRAINT_SCHEMA || '_' || i.CONSTRAINT_NAME as INDEX_NAME, ii.COLUMN_NAME, ii.ORDINAL_POSITION, case when i.CONSTRAINT_TYPE = 'PRIMARY KEY' then 'Y' else 'N' end as PRIMARY_KEY\r\nfrom INFORMATION_SCHEMA.table_constraints i inner join INFORMATION_SCHEMA.key_column_usage ii on i.CONSTRAINT_SCHEMA = ii.CONSTRAINT_SCHEMA and i.CONSTRAINT_NAME = ii.CONSTRAINT_NAME and i.TABLE_SCHEMA = ii.TABLE_SCHEMA and i.TABLE_NAME = ii.TABLE_NAME\r\nwhere i.TABLE_SCHEMA = 'public' and i.TABLE_NAME =" # Table specific: 'test1'\r\nand i.CONSTRAINT_TYPE in ('PRIMARY KEY', 'UNIQUE')\r\norder by i.CONSTRAINT_SCHEMA || '_' || i.CONSTRAINT_NAME, ii.TABLE_SCHEMA, ii.TABLE_NAME, ii.ORDINAL_POSITION"
+
+PBI_CATALOG_TABLE_NAME_REG_EXPR             = r"TABLE_NAME = '(\w*)'"
+PBI_CATALOG_TABLE_CONSTRAINT_REG_EXPR       = r"\b(INFORMATION_SCHEMA)\b.*\b(CONSTRAINT_NAME)\b"
 PG_DISCARD_ALL_QUERY                        = b'DISCARD ALL\x00'
 PG_DISCARD_ALL_STRING                       = 'DISCARD ALL'
 
 USER_TABLE_TYPE                             =  'BASE TABLE'  # Currently hard coded all user tables o be BASE TABLE type
 
-PG_INT_STRING = "integer"
-SQ_INT_STRING = "int"
+PG_INT_STRING  = "integer"
+SQ_INT_STRING  = "int"
 PG_TEXT_STRING = "text"
 SQ_TEXT_STRING = "text"
 
@@ -109,8 +118,7 @@ def get_table_from_catalog_col_info_query(query) :
     """
     Extract from the catalog query PBI_CATALOG_COLUMN_INFO_QUERY the table name 
     """
-    import re
-    table_names = re.findall(PBI_CATALOG_TABLE_NAME_REGULAR_EXPRESSION, query)
+    table_names = re.findall(PBI_CATALOG_TABLE_NAME_REG_EXPR, query)
     assert len(table_names) == 1, "Mismatch number of table names in query"
     return table_names[0]
 
@@ -200,6 +208,18 @@ def is_pg_catalog_msg(query):
     elif query.startswith(PBI_CATALOG_COLUMN_INFO_QUERY) :
         logging.info("Received PG Catalog Column Info query")
         is_pg_catalog = True
+    elif query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_2) :
+        logging.info("Received PG Catalog Preview Constrant msg 2 query")
+        is_pg_catalog = True
+    elif query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_3) :
+        logging.info("Received PG Catalog Preview Constrant msg 3 query")
+        is_pg_catalog = True
+    elif query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_4) :
+        logging.info("Received PG Catalog Preview Constrant msg 4 query")
+        is_pg_catalog = True
+    elif len(re.findall(PBI_CATALOG_TABLE_CONSTRAINT_REG_EXPR, query.decode("utf-8"), re.DOTALL)) > 0 :
+        logging.info("Received PG Catalog Table Constraint query")
+        is_pg_catalog = True
     
     return is_pg_catalog
 
@@ -239,6 +259,26 @@ def prepare_pg_catalog_cols_desc(query):
         cols_type   = [COL_TEXT_TYPE_OID,           COL_INT_TYPE_OID,          COL_TEXT_TYPE_2_OID,     COL_TEXT_TYPE_2_OID]
         cols_length = [64,                          4,                         -1,                      -1]
         cols_format = [COL_FORMAT_BINARY,           COL_FORMAT_BINARY,          COL_FORMAT_BINARY,      COL_FORMAT_BINARY]
+    elif query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_2) :
+        cols_name   = ['pk_column_name',           'fk_table_schema',          'fk_table_name',       'fk_column_name',     'ordinal',          'fk_name']
+        cols_type   = [COL_TEXT_TYPE_OID,           COL_TEXT_TYPE_OID,          COL_TEXT_TYPE_OID,     COL_TEXT_TYPE_OID,    COL_INT_TYPE_OID,   COL_TEXT_TYPE_3_OID]
+        cols_length = [64,                          64,                         64,                    64,                  4,                   -1 ]
+        cols_format = [COL_FORMAT_BINARY,           COL_FORMAT_BINARY,          COL_FORMAT_BINARY,     COL_FORMAT_BINARY,   COL_FORMAT_BINARY,   COL_FORMAT_BINARY]
+    elif query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_3) :
+        cols_name   = ['pk_table_schema',           'pk_table_name',            'pk_column_name',     'fk_column_name',     'ordinal',          'fk_name']
+        cols_type   = [COL_TEXT_TYPE_OID,           COL_TEXT_TYPE_OID,          COL_TEXT_TYPE_OID,     COL_TEXT_TYPE_OID,    COL_INT_TYPE_OID,   COL_TEXT_TYPE_3_OID]
+        cols_length = [64,                          64,                         64,                    64,                   4,                   -1 ]
+        cols_format = [COL_FORMAT_BINARY,           COL_FORMAT_BINARY,          COL_FORMAT_BINARY,     COL_FORMAT_BINARY,    COL_FORMAT_BINARY,   COL_FORMAT_BINARY]
+    elif query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_4) :
+        cols_name   = ['index_name',                'column_name',              'ordinal_position',   'primary_key']
+        cols_type   = [COL_TEXT_TYPE_3_OID,         COL_TEXT_TYPE_OID,          COL_INT_TYPE_OID,     COL_TEXT_TYPE_3_OID]
+        cols_length = [-1,                          64,                         4,                    -1]
+        cols_format = [COL_FORMAT_BINARY,           COL_FORMAT_BINARY,          COL_FORMAT_BINARY,    COL_FORMAT_BINARY]
+    elif len(re.findall(PBI_CATALOG_TABLE_CONSTRAINT_REG_EXPR, query.decode("utf-8"), re.DOTALL)) > 0 :
+        cols_name   = ['empty']
+        cols_type   = [COL_TEXT_TYPE_OID]
+        cols_length = [1]
+        cols_format = [COL_FORMAT_BINARY]
     else :
         raise ValueError('Received unknown pg catalog query ')
 
@@ -441,7 +481,13 @@ def prepare_pg_catalog_cols_value(connection, query) :
                                index + 1,                                       \
                                col_detail[SQREAM_CATALOG_COL_INFO_IS_NULLABLE], \
                                col_type])
-        return cols_values
+        return cols_values 
+    elif len(re.findall(PBI_CATALOG_TABLE_CONSTRAINT_REG_EXPR, query.decode("utf-8"), re.DOTALL)) > 0   or \
+         query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_2)                                         or \
+         query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_3)                                         or \
+         query.startswith(PBI_CATALOG_PREVIEW_CONSTRAINT_MSG_4) :
+            return empty_cols_values
+    
     else :
         raise ValueError('Received unknown pg catalog query ')
 
