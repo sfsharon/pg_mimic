@@ -301,9 +301,14 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     assert (input_msg[MSG_ID] == EXECUTE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
 
     if not is_catalog_query: 
-        logging.info ("Recieved query :\n" + (query.decode("utf-8")))
+        query = query.decode("utf-8")
+        logging.info ("Recieved query :\n" + (query))
+
+        # Substitue variables to actual parameters in the SQL query
+        query = remove_table_varable_from_query(query)
+
         # Query backend database
-        query_output = execute_query(backend_db_con, query.decode('utf-8'))
+        query_output = execute_query(backend_db_con, query)
         cols_desc   = prepare_cols_desc(query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_NAME],
                                         query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_TYPE],
                                         query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_LENGTH],

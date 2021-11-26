@@ -114,6 +114,31 @@ INT_LENGTH = 4
 # ***********************************************
 # * Utility functions
 # ***********************************************
+
+def remove_table_varable_from_query(query) :
+    """
+    Some queries are received from PBI parametrized.
+    This function deals with parametrized Table name.
+    """
+
+    # Identifying the full table name, to be replaced with the variable $Table 
+    EXTRACT_TABLE_NAME_RE  = r'from (\"\w+\"\.\"\w+\") \"\$Table\"'
+    # To identify variable name "$Table" in strings such as : "$Table"."xint"
+    FIND_TABLE_VAR_VALUE_RE = r'(\"\$Table\")\.(\"\w*\")'
+    FIND_TABLE_STRING_RE    = r'(\"\$Table\")'
+
+    table_name = re.findall(EXTRACT_TABLE_NAME_RE, query)
+    assert len(table_name) == 1, "Error extracting Table name parameter value"
+    table_name = table_name[0] + r'.\2'
+
+    # Substituting the $Table variable with the actual table name :
+    query = re.sub(FIND_TABLE_VAR_VALUE_RE, table_name, query)
+
+    # Erase the Table variabel fromend of query
+    query = re.sub(FIND_TABLE_STRING_RE, '', query)
+
+    return query
+
 def get_table_from_catalog_col_info_query(query) :
     """
     Extract from the catalog query PBI_CATALOG_COLUMN_INFO_QUERY the table name 
