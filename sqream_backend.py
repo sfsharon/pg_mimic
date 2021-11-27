@@ -22,6 +22,7 @@ BACKEND_QUERY__DESC_COLS_FORMAT = "cols_format"
 BACKEND_QUERY__RESULT       = "backend_query__result"
 
 SQREAM_TYPE_INT             = 'ftInt'
+SQREAM_TYPE_TEXT            = 'ftBlob'
 SQREAM_COL_NOT_NULLABLE     = 'not null'
 
 SQREAM_CATALOG_TABLES_QUERY  = "SELECT * FROM sqream_catalog.tables"

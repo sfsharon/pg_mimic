@@ -291,6 +291,19 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
         # logging.info ("Got initial PBI type query\n")         
         cols_desc  = prepare_pg_catalog_cols_desc(query)
         cols_values = prepare_pg_catalog_cols_value(backend_db_con, query)
+    else : 
+        # Regular query
+        query = query.decode("utf-8")
+        logging.info ("Recieved query :\n" + (query))
+        # Substitue variables to actual parameters in the SQL query
+        query = remove_table_varable_from_query(query)
+        # Query backend database
+        query_output = execute_query(backend_db_con, query)
+        cols_desc   = prepare_cols_desc(query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_NAME],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_TYPE],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_LENGTH],
+                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_FORMAT])
+        cols_values  = query_output[BACKEND_QUERY__RESULT]
 
     msg += T_Msg_RowDescription_Serialize(cols_desc)
 
@@ -299,21 +312,6 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     input_msg = parsed_msgs[0]
     parsed_msgs = parsed_msgs[1:]
     assert (input_msg[MSG_ID] == EXECUTE_MSG_ID), f"Received a wrong message ID {input_msg[MSG_ID]}"
-
-    if not is_catalog_query: 
-        query = query.decode("utf-8")
-        logging.info ("Recieved query :\n" + (query))
-
-        # Substitue variables to actual parameters in the SQL query
-        query = remove_table_varable_from_query(query)
-
-        # Query backend database
-        query_output = execute_query(backend_db_con, query)
-        cols_desc   = prepare_cols_desc(query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_NAME],
-                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_TYPE],
-                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_LENGTH],
-                                        query_output[BACKEND_QUERY__DESCRIPTION][BACKEND_QUERY__DESC_COLS_FORMAT])
-        cols_values  = query_output[BACKEND_QUERY__RESULT]
 
     for col_values in cols_values :
         msg += D_Msg_DataRow_Serialize(cols_desc, col_values) 

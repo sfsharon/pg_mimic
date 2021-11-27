@@ -17,6 +17,7 @@ from sqream_backend import  sqream_catalog_tables,              \
                             SQREAM_CATALOG_SCHEMA_NAME,         \
                             SQREAM_CATALOG_TABLE_NAME,          \
                             SQREAM_TYPE_INT,                    \
+                            SQREAM_TYPE_TEXT,                   \
                             SQREAM_CATALOG_COL_INFO_COL_NAME,   \
                             SQREAM_CATALOG_COL_INFO_COL_TYPE,   \
                             SQREAM_CATALOG_COL_INFO_IS_NULLABLE 
@@ -162,10 +163,12 @@ def prepare_cols_desc(cols_name, cols_type, cols_length, cols_format):
 
     cols_desc = []
     for index in range(num_of_cols) :
-        # Translate SQream type to Postgres type
+        # Translate SQream types to Postgres types
         if cols_type[index] == SQREAM_TYPE_INT :
             cols_type[index] = COL_INT_TYPE_OID
-        
+        elif cols_type[index] == SQREAM_TYPE_TEXT :
+            cols_type[index] = COL_TEXT_TYPE_OID
+            
         cols_desc.append({COL_DESC__NAME   : cols_name[index],
                           COL_DESC__TYPE   : cols_type[index],
                           COL_DESC__FORMAT : cols_format[index],
