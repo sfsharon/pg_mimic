@@ -73,7 +73,7 @@ def execute_query (connection, query) :
     cols_name   = [metadata[0] for metadata in cur.description]
     
     num_of_cols = len(cols_type)
-    cols_format = [COL_FORMAT_TEXT for i in range(num_of_cols)] # Hard coded - All columns are in Text format
+    cols_format = [COL_FORMAT_BINARY for i in range(num_of_cols)] # Hard coded - All columns are in Text format
 
     assert num_of_cols == len(cols_type) == len(cols_length) == len(cols_name), "Wrong number of column attributes"
 

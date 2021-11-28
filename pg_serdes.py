@@ -110,6 +110,8 @@ SQ_INT_STRING  = "int"
 PG_TEXT_STRING = "text"
 SQ_TEXT_STRING = "text"
 
+SQ_TEXT_LENGTH = -1
+
 INT_LENGTH = 4
 
 # ***********************************************
@@ -167,8 +169,9 @@ def prepare_cols_desc(cols_name, cols_type, cols_length, cols_format):
         if cols_type[index] == SQREAM_TYPE_INT :
             cols_type[index] = COL_INT_TYPE_OID
         elif cols_type[index] == SQREAM_TYPE_TEXT :
-            cols_type[index] = COL_TEXT_TYPE_OID
-            
+            cols_type[index] = COL_TEXT_TYPE_3_OID
+            cols_length[index] = SQ_TEXT_LENGTH
+
         cols_desc.append({COL_DESC__NAME   : cols_name[index],
                           COL_DESC__TYPE   : cols_type[index],
                           COL_DESC__FORMAT : cols_format[index],
@@ -933,7 +936,9 @@ def D_Msg_DataRow_Serialize(cols_desc, cols_values) :
             cols_desc[index][COL_DESC__TYPE]  == COL_INT_TYPE_OID :
                 col_value_string = utility_int_to_bytes(col_value)
         elif cols_desc[index][COL_DESC__FORMAT] == COL_FORMAT_BINARY or \
-             cols_desc[index][COL_DESC__TYPE] == COL_TEXT_TYPE_OID or \
+             cols_desc[index][COL_DESC__TYPE] == COL_TEXT_TYPE_OID   or \
+             cols_desc[index][COL_DESC__TYPE] == COL_TEXT_TYPE_2_OID or \
+             cols_desc[index][COL_DESC__TYPE] == COL_TEXT_TYPE_3_OID or \
              cols_desc[index][COL_DESC__TYPE] == COL_CHAR_TYPE_OID :
                 col_value_string = bytes(col_value, "utf-8")
         elif cols_desc[index][COL_DESC__FORMAT] == COL_FORMAT_TEXT :
