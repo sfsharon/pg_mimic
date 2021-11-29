@@ -523,7 +523,27 @@ def prepare_pg_catalog_cols_value(connection, query) :
         raise ValueError('Received unknown pg catalog query ')
 
 
-def tokenization(data, is_expecting_startup_msg):
+def is_init_message(first_byte) :
+    """
+    Test if the first byte of a message contains a meesage ID.
+    If not, this must be a startup message.
+        Any change in the message ID list should reflect also in function parse()
+    Input : First byte of the received message
+    Output : True is contains message ID, False otherwise.
+    """
+    if  first_byte == QUERY_MSG_ID      or \
+        first_byte == PASSWORD_MSG_ID   or \
+        first_byte == PARSE_MSG_ID      or \
+        first_byte == BIND_MSG_ID       or \
+        first_byte == DESCRIBE_MSG_ID   or \
+        first_byte == EXECUTE_MSG_ID    or \
+        first_byte == SYNC_MSG_ID :
+            return False
+    else :
+            return True
+
+
+def tokenization(data, is_startup_msg):
     """
     Tokenize a stream of bytes into a list of tuples with two values :
         [(Header Msg ID size of byte, Msg payload), 
@@ -535,7 +555,7 @@ def tokenization(data, is_expecting_startup_msg):
 
     while len(data) > 0 :
         # Get message at the start of the data frame - MsgID / Length
-        if is_expecting_startup_msg == True :
+        if is_startup_msg == True :
             HEADERFORMAT = "!i"     
             header_len = struct.calcsize(HEADERFORMAT)
             msg_len = struct.unpack(HEADERFORMAT, data[0:header_len])[0]
@@ -553,18 +573,19 @@ def tokenization(data, is_expecting_startup_msg):
 
     return tokenized_msgs
 
-def parse(tokenized_msgs, is_expecting_startup_msg) :
+
+def parse(tokenized_msgs) :
     """
-    Parse tokenized messages into Postgres messages
+    Parse tokenized messages into Postgres messages.
+    Any change in the message ID list should reflect also in function is_init_message()
     """
     parsed_msgs = []
+
 
     # Special case for Startup message, which do not have Message ID character at the message beginning
     for msg in tokenized_msgs :
         msg_id = msg[0]
-        if is_expecting_startup_msg == True :
-            parsed_msgs.append(Startup_Msg_Deserialize(msg))
-        elif msg_id == QUERY_MSG_ID :
+        if msg_id == QUERY_MSG_ID :
             parsed_msgs.append(Q_Msg_Simple_Query_Deserialize(msg))
         elif msg_id == PASSWORD_MSG_ID :
             parsed_msgs.append({MSG_ID : PASSWORD_MSG_ID})
@@ -577,10 +598,11 @@ def parse(tokenized_msgs, is_expecting_startup_msg) :
         elif msg_id == EXECUTE_MSG_ID :
             parsed_msgs.append(E_Msg_Execute_Deserialize(msg))
         elif msg_id == SYNC_MSG_ID :
-            parsed_msgs.append( S_Msg_Sync_Deserialize(msg))
+            parsed_msgs.append(S_Msg_Sync_Deserialize(msg))
         else :
-            assert 0, f"Unrecognized message id : {msg_id}"
-            
+            # Assume this is a startup message if could not match any message ID
+            parsed_msgs.append(Startup_Msg_Deserialize(msg)) 
+
     return parsed_msgs
 
 

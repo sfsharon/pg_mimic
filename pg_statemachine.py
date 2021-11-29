@@ -289,7 +289,7 @@ def parse_query_state_transition(parsed_msgs, output_msg, backend_db_con) :
     cols_desc = {}
     if is_catalog_query:        
         # logging.info ("Got initial PBI type query\n")         
-        cols_desc  = prepare_pg_catalog_cols_desc(query)
+        cols_desc   = prepare_pg_catalog_cols_desc(query)
         cols_values = prepare_pg_catalog_cols_value(backend_db_con, query)
     else : 
         # Regular query
@@ -361,12 +361,16 @@ def CreatePGStateMachine() :
 
     return pg_mimic
 
-def is_initial_state(sm) :
+def is_init_statemachine(sm, parsed_msgs) :
     """
-    Input : Receives a  PG_StateMachine()
-    Output : True if state is STARTUP_STATE, False otherwise.
+    Input : Receives a  PG_StateMachine() and parsed input messages.
+            If Startup message exists, it is always the first message.
+    Output : True if state is STARTUP_STATE or f identified first message as Startup message, False otherwise.
     """
-    return True if sm.new_state == STARTUP_STATE else False
+    is_init_state  = True if sm.new_state == STARTUP_STATE else False
+    is_startup_msg = len(parsed_msgs) > 0 and parsed_msg[0][MSG_ID] == STARTUP_MSG_ID 
+
+    return is_init_state or is_startup_msg 
 
 def force_initial_state(sm) :
     """
