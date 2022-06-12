@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
 Postgres Serialize-Deserialize messages module.
-Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-formats.html          
+Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-formats.html
 """
 
 import logging
@@ -124,22 +124,29 @@ def remove_table_varable_from_query(query) :
     This function deals with parametrized Table name.
     """
 
-    # Identifying the full table name, to be replaced with the variable $Table 
-    EXTRACT_TABLE_NAME_RE  = r'from (\"\w+\"\.\"\w+\") \"\$Table\"'
-    # To identify variable name "$Table" in strings such as : "$Table"."xint"
-    FIND_TABLE_VAR_VALUE_RE = r'(\"\$Table\")\.(\"\w*\")'
-    FIND_TABLE_STRING_RE    = r'(\"\$Table\")'
+    TABLE_VARIABLE    = '"$Table"'
+    TABLE_VARIABLE_RE = '\"\$Table\"'
 
-    table_name = re.findall(EXTRACT_TABLE_NAME_RE, query)
-    assert len(table_name) == 1, "Error extracting Table name parameter value"
-    table_name = table_name[0] + r'.\2'
+    if TABLE_VARIABLE in query :
+        logging.info("remove_table_varable_from_query : Replacing table variale in query")
+        # Identifying the full table name, to be replaced with the variable $Table 
+        EXTRACT_TABLE_NAME_RE  = r'from (\"\w+\"\.\"\w+\") '+ TABLE_VARIABLE_RE
+        # To identify variable name "$Table" in strings such as : "$Table"."xint"
+        FIND_TABLE_VAR_VALUE_RE = r'(\"\$Table\")\.(\"\w*\")'
+        FIND_TABLE_STRING_RE    = r'(\"\$Table\")'
 
-    # Substituting the $Table variable with the actual table name :
-    query = re.sub(FIND_TABLE_VAR_VALUE_RE, table_name, query)
+        table_name = re.findall(EXTRACT_TABLE_NAME_RE, query)
 
-    # Erase the Table variabel fromend of query
-    query = re.sub(FIND_TABLE_STRING_RE, '', query)
+        assert len(table_name) == 1, "Error extracting Table name parameter value"
+        table_name = table_name[0] + r'.\2'
 
+        # Substituting the $Table variable with the actual table name :
+        query = re.sub(FIND_TABLE_VAR_VALUE_RE, table_name, query)
+
+        # Erase the Table variabel fromend of query
+        query = re.sub(FIND_TABLE_STRING_RE, '', query)
+    else :
+        logging.info("remove_table_varable_from_query : No table variale in query")
     return query
 
 def get_table_from_catalog_col_info_query(query) :

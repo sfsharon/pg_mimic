@@ -6,9 +6,12 @@ PowerBI issue, where it did not close a session, and started a new one).
 
 References :
 ------------
-FSM :                   https://www.python-course.eu/finite_state_machine.php
-Logging :               https://docs.python.org/3/howto/logging.html
-                        https://realpython.com/python-logging/
-Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-formats.html       
-Server example :        https://docs.python.org/3/library/socketserver.html 
+* FSM :                   https://www.python-course.eu/finite_state_machine.php
+* Logging :               https://docs.python.org/3/howto/logging.html
+                          https://realpython.com/python-logging/
+* Postgres data formats : https://www.postgresql.org/docs/12/protocol-message-formats.html       
+* TCP Server example :    https://docs.python.org/3/library/socketserver.html 
+* TCP Client example :    https://gist.github.com/homoluctus/5ee21411dd89cebbb237b51ab56f0a4c
+* SQream backend :        https://pypi.org/project/pysqream/  
+
 

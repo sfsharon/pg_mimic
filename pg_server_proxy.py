@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
 Postgres Server Proxy for SqreamDB
-Follows the reuiqred protocol messages, and keeps a state to respond corretly.
+Follows the reuiqred protocol messages, and keeps a state to respond correctly.
 Designed to work with only a single client at a time (multithresding the server was done to deal with 
 PowerBI issue, where it did not close a session, and started a new one).
 
@@ -16,7 +16,6 @@ Server example :        https://docs.python.org/3/library/socketserver.html
 
 import logging
 logging.basicConfig(level=logging.DEBUG)
-
 
 
 # *****************************************************
@@ -60,10 +59,9 @@ class MyPGHandler(socketserver.BaseRequestHandler):
             # Parse messages to their attributes
             parsed_msgs = parse(tokens)
 
-
             # Initialize the result return object from the state machine 
             res = {}
-            res[STATE_MACHINE__IS_TX_MSG] = False
+            res[STATE_MACHINE__IS_TX_MSG]   = False
             res[STATE_MACHINE__OUTPUT_MSG]  = bytes('', "utf-8")
             res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs
 

@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.DEBUG)
 # * State machine constants
 # *****************************************************
 STATE_MACHINE__NEW_STATE   = "new_state"
-STATE_MACHINE__OUTPUT_MSG  = "send_msg"
+STATE_MACHINE__OUTPUT_MSG  = "output_msg"
 STATE_MACHINE__IS_TX_MSG   = "is_tx_msg"
 STATE_MACHINE__PARSED_MSGS = "parsed_msgs"
 
@@ -35,7 +35,7 @@ class PG_StateMachine:
     def run(self, parsed_msgs, output_msg):
         """
         parsed_msgs : List of dictionaries, holding the input mesages
-        output_msg : A string being built by the states in the state machine.
+        output_msg  : A string being built by the states in the state machine.
         """
 
         res = {}
@@ -60,13 +60,13 @@ from sqream_backend import *
 # *****************************************************
 # * Postgres Protocol Implementation
 # *****************************************************
-STARTUP_STATE = "STARTUP_STATE"
-PASSWORD_STATE = "PASSWORD_STATE"
-PARAMETER_STATUS_STATE = "PARAMETER_STATUS_STATE"
-QUERY_STATE = "QUERY_STATE"
-SIMPLE_QUERY_STATE = "SIMPLE_QUERY_STATE"
-PARSE_QUERY_STATE = "PARSE_QUERY_STATE"
-END_STATE = "END_STATE"
+STARTUP_STATE           = "STARTUP_STATE"
+PASSWORD_STATE          = "PASSWORD_STATE"
+PARAMETER_STATUS_STATE  = "PARAMETER_STATUS_STATE"
+QUERY_STATE             = "QUERY_STATE"
+SIMPLE_QUERY_STATE      = "SIMPLE_QUERY_STATE"
+PARSE_QUERY_STATE       = "PARSE_QUERY_STATE"
+END_STATE               = "END_STATE"
 
 def startup_transition(parsed_msgs, output_msg, backend_db_con) :
     logging.info("Entering startup_transition")
@@ -98,7 +98,7 @@ def password_state_transition(parsed_msgs, output_msg, backend_db_con) :
     res[STATE_MACHINE__PARSED_MSGS] = parsed_msgs[1:]
 
     # Serialize Response
-    res[STATE_MACHINE__OUTPUT_MSG] = output_msg # send_msg = ""
+    res[STATE_MACHINE__OUTPUT_MSG] = output_msg 
 
     # Verify this is password message
     if not is_password_msg(input_msg) :
